@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this toolkit, please cite as below."
+title: "SSF AI Toolkit (ssfaitk)"
+authors:
+  - family-names: Altarturi
+    given-names: Hamza
+  - name: WorldFish Contributors
+date-released: "2025-11-02"
+license: Apache-2.0
+version: 0.1.0

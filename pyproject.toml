@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssfaitk"
+version = "0.1.0"
+description = "Small-Scale Fisheries AI Toolkit: effort, gear, vessel models"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Hamza Altarturi" },
+  { name = "WorldFish Contributors" },
+]
+license = { text = "Apache-2.0" }
+keywords = ["fisheries", "small-scale fisheries", "AI", "ML", "geospatial"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "scikit-learn>=1.2",
+  "pyarrow>=14.0",
+  "pydantic>=2",
+  "joblib>=1.3",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-cov>=4",
+  "mypy>=1.7",
+  "ruff>=0.7",
+  "black>=24.3.0",
+  "isort>=5.13.2",
+  "pre-commit>=3.7.0",
+]
+
+[project.scripts]
+ssfaitk = "ssfaitk.cli:main"
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP", "B", "ANN"]
+ignore = ["E501"]
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+ignore_missing_imports = true
