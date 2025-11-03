@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import argparse
 from pathlib import Path
+
 import pandas as pd
 from rich.console import Console
 
@@ -10,6 +12,7 @@ from .models.vessel import VesselTypePredictor
 
 console = Console()
 
+
 def _read_df(path: str | Path) -> pd.DataFrame:
     p = Path(path)
     if p.suffix.lower() in {".parquet"}:
@@ -18,6 +21,7 @@ def _read_df(path: str | Path) -> pd.DataFrame:
         return pd.read_csv(p)
     else:
         raise ValueError(f"Unsupported input format: {p.suffix}")
+
 
 def _write_df(df: pd.DataFrame, path: str | Path) -> None:
     p = Path(path)
@@ -29,6 +33,7 @@ def _write_df(df: pd.DataFrame, path: str | Path) -> None:
     else:
         raise ValueError(f"Unsupported output format: {p.suffix}")
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ssfaitk", description="SSF AI Toolkit CLI")
     sub = parser.add_subparsers(dest="cmd")
@@ -37,7 +42,9 @@ def main() -> None:
     p_eff = sub.add_parser("effort", help="Fishing effort classification")
     p_eff_sub = p_eff.add_subparsers(dest="eff_cmd")
     p_eff_pred = p_eff_sub.add_parser("predict", help="Predict fishing vs non-fishing")
-    p_eff_pred.add_argument("--input", required=True, help="Parquet/CSV with track points or segments")
+    p_eff_pred.add_argument(
+        "--input", required=True, help="Parquet/CSV with track points or segments"
+    )
     p_eff_pred.add_argument("--output", required=True, help="Write predictions to Parquet/CSV")
     p_eff_pred.add_argument("--model", required=False, help="Path to model artifact (optional)")
 
@@ -72,12 +79,17 @@ def main() -> None:
         console.print(f"[green]Gear predictions -> {args.output}[/green]")
     elif args.cmd == "vessel" and args.vessel_cmd == "predict":
         df = _read_df(args.input)
-        model = VesselTypePredictor.load(args.model) if args.model else VesselTypePredictor.load_default()
+        model = (
+            VesselTypePredictor.load(args.model)
+            if args.model
+            else VesselTypePredictor.load_default()
+        )
         out = model.predict_df(df)
         _write_df(out, args.output)
         console.print(f"[green]Vessel predictions -> {args.output}[/green]")
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
