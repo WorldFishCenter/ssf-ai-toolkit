@@ -1,17 +1,21 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import pandas as pd
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
-from ..base import BaseModel
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
 from ...utils.logging import get_logger
+from ..base import BaseModel
 
 logger = get_logger(__name__)
 
 FEATURES = ["duration_hours", "distance_nm", "mean_sog"]
 LABEL_COL = "gear_label"
+
 
 @dataclass
 class GearPredictor(BaseModel):
@@ -24,7 +28,7 @@ class GearPredictor(BaseModel):
         clf = LogisticRegression(max_iter=1000, multi_class="auto")
         return Pipeline([("pre", pre), ("clf", clf)])
 
-    def fit_df(self, df: pd.DataFrame) -> "GearPredictor":
+    def fit_df(self, df: pd.DataFrame) -> GearPredictor:
         X = df[FEATURES]
         y = df[LABEL_COL].astype("category")
         self.pipeline = self._make_pipeline().fit(X, y)
@@ -40,8 +44,10 @@ class GearPredictor(BaseModel):
         return out
 
     @classmethod
-    def load_default(cls) -> "GearPredictor":
+    def load_default(cls) -> GearPredictor:
         model = cls()
         model.pipeline = cls._make_pipeline()
-        logger.warning("Loaded default untrained GearPredictor pipeline. Call .fit_df() or load trained artifact.")
+        logger.warning(
+            "Loaded default untrained GearPredictor pipeline. Call .fit_df() or load trained artifact."
+        )
         return model

@@ -1,7 +1,9 @@
 from __future__ import annotations
-from typing import Dict, Any
-import numpy as np
-from sklearn.metrics import classification_report, f1_score, accuracy_score
+
+from typing import Any, Dict
+
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+
 
 def basic_classification_metrics(y_true, y_pred) -> Dict[str, Any]:
     return {
