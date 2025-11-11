@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .models.effort import EffortClassifier
 from .models.gear import GearPredictor
 from .models.vessel import VesselTypePredictor

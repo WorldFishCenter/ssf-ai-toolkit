@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
-from scipy.ndimage import median_filter
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 
@@ -30,14 +30,14 @@ _CANONICAL = dict(
 )
 
 
-def _first_present(df: pd.DataFrame, options: Iterable[str]) -> Optional[str]:
+def _first_present(df: pd.DataFrame, options: Iterable[str]) -> None:
     for c in options:
         if c in df.columns:
             return c
     return None
 
 
-def _require(colname: Optional[str], which: str) -> str:
+def _require(colname: str | None, which: str) -> str:
     if not colname:
         raise ValueError(
             f"Required column for '{which}' not found. " f"Expected one of {_CANONICAL[which]}"
@@ -111,7 +111,7 @@ def _add_features(
     win: int = 5,
     speed_clip: float = 60.0,
     accel_clip: float = 30.0,
-    colmap: Optional[Dict[str, str]] = None,
+    colmap: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """
     Builds per-point spatiotemporal features (speed/accel/turning/rolling stats,
@@ -315,8 +315,12 @@ class EffortClassifier(BaseModel):
     - predict_df: returns predictions (+ optional per-trip median smoothing)
     """
 
-    pipeline: Optional[Pipeline] = None
+    pipeline: Pipeline | None = None
     smoothing_k: int = 5  # median filter window (per-trip). Set 0/1 to disable.
+
+    def __init__(self):
+        self.pipeline: Pipeline | None = None
+        self.feat_cols = _FEAT_COLS
 
     @staticmethod
     def _make_pipeline() -> Pipeline:
@@ -329,8 +333,8 @@ class EffortClassifier(BaseModel):
         self,
         df: pd.DataFrame,
         label_col: str = "Activity",
-        colmap: Optional[Dict[str, str]] = None,
-        feature_kwargs: Optional[Dict[str, Any]] = None,
+        colmap: dict[str, str] | None = None,
+        feature_kwargs: dict[str, any] | None = None,
     ) -> EffortClassifier:
         """Train on per-point labeled data."""
         feature_kwargs = feature_kwargs or {}
@@ -350,20 +354,19 @@ class EffortClassifier(BaseModel):
     def predict_df(
         self,
         df: pd.DataFrame,
-        colmap: Optional[Dict[str, str]] = None,
-        feature_kwargs: Optional[Dict[str, Any]] = None,
+        feature_kwargs: dict[str, any] | None = None,
         return_proba: bool = True,
-        apply_smoothing: bool = True,
     ) -> pd.DataFrame:
         """Predict on raw points; returns dataframe with 'effort_pred' (0/1) and 'effort_prob'."""
+        feature_kwargs = feature_kwargs or {}
         if self.pipeline is None:
             raise RuntimeError("Model is not trained/loaded.")
 
-        feature_kwargs = feature_kwargs or {}
-        df_feat = _add_features(df, **feature_kwargs, colmap=colmap)
-        X = df_feat[_FEAT_COLS].astype("float32")
+        if not set(self.feat_cols).issubset(df.columns):
+            print("computing features..")
+            df = _add_features(df, **feature_kwargs)
 
-        # Raw predictions
+        X = df[self.feat_cols].astype("float32")
         pred_int = self.pipeline.predict(X).astype(int)
         if return_proba and hasattr(self.pipeline.named_steps["clf"], "predict_proba"):
             proba = self.pipeline.predict_proba(X)[:, 1]
@@ -371,28 +374,10 @@ class EffortClassifier(BaseModel):
             # Fall back to 0/1 as probability proxy if model lacks predict_proba
             proba = pred_int.astype(float)
 
-        # Optional per-trip median smoothing
-        if apply_smoothing and self.smoothing_k and self.smoothing_k > 1:
-            trip_col = _first_present(df_feat, _CANONICAL["trip_id"])
-            if trip_col is None:
-                logger.warning("Trip column not found; skipping smoothing.")
-            else:
-                smoothed = np.empty_like(pred_int)
-                ptr = 0
-                # groupby preserves order here because df_feat is sorted by Trip_ID, ltime
-                for _, grp in df_feat.groupby("Trip_ID"):
-                    n = len(grp)
-                    smoothed[ptr : ptr + n] = median_filter(
-                        pred_int[ptr : ptr + n], size=self.smoothing_k
-                    )
-                    ptr += n
-                pred_int = smoothed
-
-        out = df.copy()
-        out["effort_pred"] = pred_int  # 1 = fishing, 0 = non-fishing
+        df["effort_pred"] = self.pipeline.predict(X)
         if return_proba:
-            out["effort_prob"] = proba
-        return out
+            df["effort_prob"] = proba
+        return df
 
     # Artifacts ------------------
     @classmethod
@@ -410,26 +395,24 @@ class EffortClassifier(BaseModel):
         return model
 
     @classmethod
-    def load_trained(cls, model_name: str = "rf") -> EffortClassifier:
-        """
-        Loads a pre-trained fishing effort classifier (RandomForest, XGB, etc.)
-        from artifacts folder.
-        """
-        from pathlib import Path
+    def load_trained(cls, model_name="rf"):
+        path = (
+            Path(__file__).resolve().parent / "artifacts" / f"effort_classifier_{model_name}.joblib"
+        )
+        if not path.exists():
+            raise FileNotFoundError(f"No model found at {path}")
 
-        import joblib
-
+        artifact = joblib.load(path)
         model = cls()
-        model_dir = Path(__file__).resolve().parent / "artifacts"
-        model_path = model_dir / f"effort_classifier_{model_name.lower()}.joblib"
 
-        if not model_path.exists():
-            raise FileNotFoundError(f"Trained model not found: {model_path}")
+        # Handle both dictionary and raw model formats
+        if isinstance(artifact, dict):
+            model.pipeline = Pipeline([("clf", artifact["model"])])
+            model.feat_cols = artifact.get("feat_cols", _FEAT_COLS)
+        else:
+            # Legacy format: direct model object
+            model.pipeline = Pipeline([("clf", artifact)])
+            model.feat_cols = _FEAT_COLS
 
-        # Load the raw sklearn model
-        loaded_clf = joblib.load(model_path)
-
-        # Create a minimal pipeline (no preprocessor needed)
-        model.pipeline = Pipeline([("clf", loaded_clf)])
-        logger.info(f"Loaded trained EffortClassifier model: {model_name}")
+        logger.info(f"Loaded trained EffortClassifier with {len(model.feat_cols)} features")
         return model
