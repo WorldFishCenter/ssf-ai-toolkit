@@ -1,7 +1,5 @@
 # src/ssfaitk/models/effort/statistical_effort_classifier.py
 """
-FROM CLAUDE
-
 Statistical Fishing Effort Classifier
 
 A rule-based classifier that uses behavioral and kinematic features to identify
@@ -20,9 +18,18 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+# Import column mapper for flexible column name handling
+try:
+    from ...utils.column_mapper import resolve_column_name
+    COLUMN_MAPPER_AVAILABLE = True
+except ImportError:
+    COLUMN_MAPPER_AVAILABLE = False
+    logging.warning("Column mapper not available - falling back to strict column names")
 
 logger = logging.getLogger(__name__)
 
@@ -234,113 +241,88 @@ def compute_spatial_features(
 
 def compute_temporal_features(df: pd.DataFrame, trip_col: str = "trip_id") -> pd.DataFrame:
     """
-    Compute temporal context features.
+    Compute temporal features: time of day, position in trip.
 
     Features:
-    - Hour of day
-    - Time since trip start
-    - Position in trip (beginning/middle/end)
+    - hour: Hour of day (0-23)
+    - is_daytime: Binary daytime indicator
+    - trip_position: Normalized position within trip (0-1)
     """
-    df = df.sort_values([trip_col, "timestamp"]).copy()
-    df["datetime"] = pd.to_datetime(df["timestamp"])
+    df = df.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
 
-    # Hour of day (0-23)
-    df["hour"] = df["datetime"].dt.hour
+    df["hour"] = df["timestamp"].dt.hour
+    df["is_daytime"] = ((df["hour"] >= 6) & (df["hour"] <= 18)).astype(int)
 
-    # Time since trip start
-    df["trip_start_time"] = df.groupby(trip_col)["datetime"].transform("min")
-    df["time_since_start_min"] = (df["datetime"] - df["trip_start_time"]).dt.total_seconds() / 60.0
-
-    # Normalized position in trip (0-1)
-    df["point_index"] = df.groupby(trip_col).cumcount()
-    df["trip_length"] = df.groupby(trip_col)[trip_col].transform("count")
-    df["trip_position"] = df["point_index"] / df["trip_length"]
+    # Position within trip
+    df["point_number"] = df.groupby(trip_col).cumcount()
+    df["total_points"] = df.groupby(trip_col)["point_number"].transform("max") + 1
+    df["trip_position"] = df["point_number"] / df["total_points"]
 
     return df
 
 
 # ===============================================================
-# Statistical Classification Rules
+# Fishing Behavior Rules
 # ===============================================================
 
 
 class FishingBehaviorRules:
-    """
-    Rule-based fishing behavior classifier using empirical thresholds.
-
-    Fishing indicators:
-    1. Low speed zones (0.5-8 km/h): Typical for setting/hauling gear
-    2. High turning activity: Searching or maneuvering around gear
-    3. Low straightness: Non-linear paths indicate fishing operations
-    4. High spatial clustering: Repeated operations in same area
-    5. Speed variability: Start-stop behavior during operations
-    """
+    """Rule-based fishing behavior detection using empirical thresholds."""
 
     def __init__(self, config: dict | None = None):
-        """
-        Initialize with configurable thresholds.
-
-        Default thresholds based on empirical fishing vessel studies.
-        """
-        self.config = config or self._default_config()
+        """Initialize with default or custom configuration."""
+        self.config = self._default_config()
+        if config:
+            self.config.update(config)
 
     @staticmethod
     def _default_config() -> dict:
-        """Default thresholds for fishing behavior detection."""
+        """Default behavioral thresholds calibrated for small-scale fisheries."""
         return {
-            # Speed-based thresholds (km/h)
-            "fishing_speed_min": 0.5,
-            "fishing_speed_max": 8.0,
-            "stationary_speed": 2.0,
-            "transit_speed_min": 10.0,
-            # Turning behavior (degrees)
-            "high_turn_threshold": 45.0,
-            "moderate_turn_threshold": 20.0,
-            # Spatial behavior
-            "low_straightness_threshold": 0.7,
+            # Speed thresholds (km/h)
+            "min_fishing_speed": 0.5,
+            "max_fishing_speed": 8.0,
+            "min_transit_speed": 12.0,
+            # Turning behavior
+            "high_turn_threshold": 45.0,  # degrees
+            # Path characteristics
+            "low_straightness_threshold": 0.4,
             "high_sinuosity_threshold": 1.5,
-            "clustering_radius_km": 2.0,
+            # Spatial clustering
+            "clustering_radius_km": 0.5,
             # Speed variability
-            "high_speed_cv_threshold": 0.8,
-            # Scoring weights
-            "weight_speed": 2.5,
+            "high_speed_cv_threshold": 0.6,
+            # Weights for combined score
+            "weight_speed": 3.0,
             "weight_turning": 2.0,
-            "weight_straightness": 1.5,
-            "weight_sinuosity": 1.0,
-            "weight_clustering": 1.5,
-            "weight_speed_variability": 1.0,
-            # Decision threshold
+            "weight_straightness": 2.0,
+            "weight_sinuosity": 1.5,
+            "weight_clustering": 2.0,
+            "weight_speed_variability": 1.5,
+            # Classification threshold
             "fishing_score_threshold": 0.5,
         }
 
     def compute_fishing_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute individual fishing behavior indicators.
-
-        Returns dataframe with binary indicators and scores.
-        """
+        """Compute binary fishing behavior indicators."""
         cfg = self.config
 
         # 1. Speed-based indicators
         df["is_fishing_speed"] = (
-            (df["speed_kmh"] >= cfg["fishing_speed_min"])
-            & (df["speed_kmh"] <= cfg["fishing_speed_max"])
+            (df["speed_kmh_mean"] >= cfg["min_fishing_speed"])
+            & (df["speed_kmh_mean"] <= cfg["max_fishing_speed"])
         ).astype(int)
 
-        df["is_stationary"] = (df["speed_kmh"] < cfg["stationary_speed"]).astype(int)
-        df["is_transit_speed"] = (df["speed_kmh"] >= cfg["transit_speed_min"]).astype(int)
+        df["is_transit_speed"] = (df["speed_kmh_mean"] >= cfg["min_transit_speed"]).astype(int)
 
         # 2. Turning behavior
         df["is_high_turning"] = (df["turn_angle_mean"] >= cfg["high_turn_threshold"]).astype(int)
 
-        df["is_moderate_turning"] = (
-            df["turn_angle_mean"] >= cfg["moderate_turn_threshold"]
-        ).astype(int)
-
-        # 3. Spatial behavior
-        df["is_low_straightness"] = (
-            df["straightness"] <= cfg["low_straightness_threshold"]
-        ).astype(int)
+        # 3. Path characteristics
+        df["is_low_straightness"] = (df["straightness"] <= cfg["low_straightness_threshold"]).astype(
+            int
+        )
 
         df["is_high_sinuosity"] = (df["sinuosity"] >= cfg["high_sinuosity_threshold"]).astype(int)
 
@@ -413,6 +395,9 @@ class StatisticalEffortClassifier:
     based on kinematic and behavioral patterns.
 
     No machine learning training required.
+    
+    Column names are automatically detected if not provided. Supports
+    common variations like 'latitude', 'Latitude', 'lat', 'LAT', etc.
     """
 
     def __init__(self, config: dict | None = None):
@@ -428,39 +413,113 @@ class StatisticalEffortClassifier:
     def predict(
         self,
         df: pd.DataFrame,
-        trip_col: str = "trip_id",
-        lat_col: str = "latitude",
-        lon_col: str = "longitude",
-        time_col: str = "timestamp",
+        trip_col: Optional[str] = None,
+        lat_col: Optional[str] = None,
+        lon_col: Optional[str] = None,
+        time_col: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Predict fishing effort for GPS tracks.
+        
+        Column names are automatically detected if not provided. Searches for
+        common variations:
+        - Latitude: 'latitude', 'Latitude', 'lat', 'Lat', 'LAT', etc.
+        - Longitude: 'longitude', 'Longitude', 'lon', 'Lon', 'LON', etc.
+        - Timestamp: 'timestamp', 'time', 'datetime', 'ltime', etc.
+        - Trip ID: 'trip_id', 'Trip_ID', 'TRIP_ID', 'voyage_id', etc.
 
         Args:
             df: DataFrame with GPS tracks
-            trip_col: Column name for trip identifier
-            lat_col: Column name for latitude
-            lon_col: Column name for longitude
-            time_col: Column name for timestamp
+            trip_col: Column name for trip identifier (auto-detected if None)
+            lat_col: Column name for latitude (auto-detected if None)
+            lon_col: Column name for longitude (auto-detected if None)
+            time_col: Column name for timestamp (auto-detected if None)
 
         Returns:
-            DataFrame with predictions and features added
+            DataFrame with predictions and features added:
+            - is_fishing: Binary classification (1=fishing, 0=non-fishing)
+            - fishing_score: Continuous likelihood score (0-1)
+            - All engineered features
+
+        Examples:
+            # Auto-detect all columns (works with any naming)
+            >>> clf = StatisticalEffortClassifier()
+            >>> predictions = clf.predict(df)
+            
+            # Specify custom column names
+            >>> predictions = clf.predict(
+            ...     df,
+            ...     lat_col='my_latitude',
+            ...     lon_col='my_longitude'
+            ... )
+            
+            # Works with various column namings
+            >>> df1 = pd.DataFrame({'Latitude': ..., 'Longitude': ...})
+            >>> df2 = pd.DataFrame({'lat': ..., 'lon': ...})
+            >>> df3 = pd.DataFrame({'LAT': ..., 'LON': ...})
+            >>> # All work with the same call:
+            >>> clf.predict(df1)
+            >>> clf.predict(df2)
+            >>> clf.predict(df3)
+        
+        Raises:
+            ValueError: If required columns cannot be found in DataFrame
         """
-        # Validate input
-        required_cols = [lat_col, lon_col, time_col]
-        missing = [col for col in required_cols if col not in df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-        # Standardize column names
-        df = df.rename(columns={lat_col: "latitude", lon_col: "longitude", time_col: "timestamp"})
-
-        # Create trip_id if not provided
-        if trip_col not in df.columns:
-            logger.info("No trip_id provided - treating all data as single trip")
-            df["trip_id"] = 1
+        df = df.copy()
+        
+        # Resolve column names (auto-detect or use user-provided)
+        if COLUMN_MAPPER_AVAILABLE:
+            # Use smart column detection
+            lat_col_resolved = resolve_column_name(df, 'latitude', lat_col, required=True)
+            lon_col_resolved = resolve_column_name(df, 'longitude', lon_col, required=True)
+            time_col_resolved = resolve_column_name(df, 'timestamp', time_col, required=True)
+            
+            # Trip column is optional
+            if trip_col:
+                # User specified trip column
+                if trip_col not in df.columns:
+                    raise ValueError(
+                        f"Specified trip column '{trip_col}' not found. "
+                        f"Available: {df.columns.tolist()}"
+                    )
+                trip_col_resolved = trip_col
+            else:
+                # Try to auto-detect
+                trip_col_resolved = resolve_column_name(df, 'trip_id', None, required=False)
+            
+            logger.info(f"Resolved columns: lat={lat_col_resolved}, lon={lon_col_resolved}, "
+                       f"time={time_col_resolved}, trip={trip_col_resolved}")
         else:
-            df = df.rename(columns={trip_col: "trip_id"})
+            # Fall back to strict names or user-provided
+            lat_col_resolved = lat_col or 'latitude'
+            lon_col_resolved = lon_col or 'longitude'
+            time_col_resolved = time_col or 'timestamp'
+            trip_col_resolved = trip_col
+            
+            # Validate required columns exist
+            required_cols = [lat_col_resolved, lon_col_resolved, time_col_resolved]
+            missing = [col for col in required_cols if col not in df.columns]
+            if missing:
+                raise ValueError(
+                    f"Missing required columns: {missing}. "
+                    f"Available columns: {df.columns.tolist()}"
+                )
+
+        # Standardize column names for internal processing
+        rename_dict = {
+            lat_col_resolved: 'latitude',
+            lon_col_resolved: 'longitude',
+            time_col_resolved: 'timestamp'
+        }
+        
+        df = df.rename(columns=rename_dict)
+
+        # Handle trip_id
+        if trip_col_resolved and trip_col_resolved in df.columns:
+            df = df.rename(columns={trip_col_resolved: 'trip_id'})
+        elif 'trip_id' not in df.columns:
+            logger.info("No trip_id provided - treating all data as single trip")
+            df['trip_id'] = 1
 
         logger.info(f"Processing {len(df)} points across {df['trip_id'].nunique()} trips")
 
@@ -554,24 +613,47 @@ class StatisticalEffortClassifier:
 
 def predict_fishing_effort(
     df: pd.DataFrame,
-    trip_col: str | None = None,
-    lat_col: str = "latitude",
-    lon_col: str = "longitude",
-    time_col: str = "timestamp",
-    config: dict | None = None,
+    trip_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    time_col: Optional[str] = None,
+    config: Optional[dict] = None,
 ) -> pd.DataFrame:
     """
     Convenience function for one-shot prediction.
-
-    Example:
+    
+    Column names are automatically detected if not provided.
+    
+    Args:
+        df: DataFrame with GPS tracks
+        trip_col: Trip identifier column (auto-detected if None)
+        lat_col: Latitude column (auto-detected if None)
+        lon_col: Longitude column (auto-detected if None)
+        time_col: Timestamp column (auto-detected if None)
+        config: Optional custom configuration dict
+    
+    Returns:
+        DataFrame with predictions added
+    
+    Examples:
+        # Auto-detect all columns
         >>> df = pd.read_csv('tracks.csv')
         >>> predictions = predict_fishing_effort(df)
         >>> print(predictions['is_fishing'].value_counts())
+        
+        # Specify custom columns
+        >>> predictions = predict_fishing_effort(
+        ...     df,
+        ...     lat_col='my_lat',
+        ...     lon_col='my_lon'
+        ... )
     """
     clf = StatisticalEffortClassifier(config=config)
-
-    kwargs = {"lat_col": lat_col, "lon_col": lon_col, "time_col": time_col}
-    if trip_col:
-        kwargs["trip_col"] = trip_col
-
-    return clf.predict(df, **kwargs)
+    
+    return clf.predict(
+        df,
+        trip_col=trip_col,
+        lat_col=lat_col,
+        lon_col=lon_col,
+        time_col=time_col
+    )
