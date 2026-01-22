@@ -13,6 +13,10 @@ coverage.xml
 htmlcov/
 .pytest_cache/
 .ipynb_checkpoints/
-data/
+# data/
 outputs/
 model_artifacts/
+auths/
+examples/data/pds-trips/zanzibar/other trips
+examples/notebooks/coastline_data
+examples/notebooks/test_outputs
