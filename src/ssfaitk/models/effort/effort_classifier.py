@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import joblib
 import numpy as np
@@ -16,9 +17,17 @@ from ..base import BaseModel
 
 logger = get_logger(__name__)
 
+# Import column mapper for flexible column name handling
+try:
+    from ...utils.column_mapper import resolve_column_name
+    COLUMN_MAPPER_AVAILABLE = True
+except ImportError:
+    COLUMN_MAPPER_AVAILABLE = False
+    logger.warning("Column mapper not available - falling back to legacy column detection")
+
 
 # ------------------------------
-# Column helpers
+# Legacy column helpers (fallback)
 # ------------------------------
 _CANONICAL = dict(
     trip_id=["Trip_ID", "trip_id", "TRIP_ID"],
@@ -31,6 +40,7 @@ _CANONICAL = dict(
 
 
 def _first_present(df: pd.DataFrame, options: Iterable[str]) -> None:
+    """Legacy: Find first column present from options list."""
     for c in options:
         if c in df.columns:
             return c
@@ -38,6 +48,7 @@ def _first_present(df: pd.DataFrame, options: Iterable[str]) -> None:
 
 
 def _require(colname: str | None, which: str) -> str:
+    """Legacy: Require column or raise error."""
     if not colname:
         raise ValueError(
             f"Required column for '{which}' not found. " f"Expected one of {_CANONICAL[which]}"
@@ -106,50 +117,127 @@ def _shape_windows_for_trip(g: pd.DataFrame, win: int) -> pd.DataFrame:
     return pd.DataFrame({"straightness_w": straight, "rog_w": rog}, index=g.index)
 
 
+def _resolve_columns(
+    df: pd.DataFrame,
+    trip_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    time_col: Optional[str] = None,
+    altitude_col: Optional[str] = None,
+    model_col: Optional[str] = None,
+) -> dict[str, str]:
+    """
+    Resolve column names using column_mapper or fallback to legacy method.
+    
+    Returns:
+        Dict mapping standard names to actual column names
+    """
+    if COLUMN_MAPPER_AVAILABLE:
+        # Use smart column detection
+        resolved = {
+            'trip_id': resolve_column_name(df, 'trip_id', trip_col, required=True),
+            'lat': resolve_column_name(df, 'latitude', lat_col, required=True),
+            'lon': resolve_column_name(df, 'longitude', lon_col, required=True),
+            'time': resolve_column_name(df, 'timestamp', time_col, required=True),
+            'altitude': resolve_column_name(df, 'altitude', altitude_col, required=False),
+            'model': resolve_column_name(df, 'device_model', model_col, required=False),
+        }
+        
+        logger.debug(f"Resolved columns: {resolved}")
+        return resolved
+    else:
+        # Fall back to legacy method
+        trip = _require(
+            trip_col if trip_col else _first_present(df, _CANONICAL["trip_id"]), 
+            "trip_id"
+        )
+        time = _require(
+            time_col if time_col else _first_present(df, _CANONICAL["time"]), 
+            "time"
+        )
+        lat = _require(
+            lat_col if lat_col else _first_present(df, _CANONICAL["lat"]), 
+            "lat"
+        )
+        lon = _require(
+            lon_col if lon_col else _first_present(df, _CANONICAL["lon"]), 
+            "lon"
+        )
+        alt = altitude_col if altitude_col else _first_present(df, _CANONICAL["altitude"])
+        mdl = model_col if model_col else _first_present(df, _CANONICAL["model"])
+        
+        return {
+            'trip_id': trip,
+            'lat': lat,
+            'lon': lon,
+            'time': time,
+            'altitude': alt or 'altitude',
+            'model': mdl or 'model',
+        }
+
+
 def _add_features(
     df: pd.DataFrame,
     win: int = 5,
     speed_clip: float = 60.0,
     accel_clip: float = 30.0,
-    colmap: dict[str, str] | None = None,
+    trip_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    time_col: Optional[str] = None,
+    altitude_col: Optional[str] = None,
+    model_col: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Builds per-point spatiotemporal features (speed/accel/turning/rolling stats,
     straightness, radius-of-gyration, trip context) with robust NaN handling.
+    
+    Column names are automatically detected if not provided. Supports common
+    variations like 'latitude', 'Latitude', 'lat', 'LAT', etc.
+    
+    Args:
+        df: DataFrame with GPS tracks
+        win: Rolling window size for statistics
+        speed_clip: Maximum speed in km/h
+        accel_clip: Maximum acceleration clip value
+        trip_col: Trip ID column name (auto-detected if None)
+        lat_col: Latitude column name (auto-detected if None)
+        lon_col: Longitude column name (auto-detected if None)
+        time_col: Timestamp column name (auto-detected if None)
+        altitude_col: Altitude column name (optional, auto-detected if None)
+        model_col: Device model column name (optional, auto-detected if None)
+    
+    Returns:
+        DataFrame with engineered features
     """
     df = df.copy()
 
-    # Map/require columns
-    trip_col = _require(
-        colmap.get("trip_id") if colmap else _first_present(df, _CANONICAL["trip_id"]), "trip_id"
+    # Resolve column names (auto-detect or use provided)
+    colmap = _resolve_columns(
+        df, 
+        trip_col=trip_col,
+        lat_col=lat_col,
+        lon_col=lon_col,
+        time_col=time_col,
+        altitude_col=altitude_col,
+        model_col=model_col
     )
-    time_col = _require(
-        colmap.get("time") if colmap else _first_present(df, _CANONICAL["time"]), "time"
-    )
-    lat_col = _require(
-        colmap.get("lat") if colmap else _first_present(df, _CANONICAL["lat"]), "lat"
-    )
-    lon_col = _require(
-        colmap.get("lon") if colmap else _first_present(df, _CANONICAL["lon"]), "lon"
-    )
-    alt_col = (
-        colmap.get("altitude") if colmap else _first_present(df, _CANONICAL["altitude"])
-    ) or "altitude"
-    mdl_col = (
-        colmap.get("model") if colmap else _first_present(df, _CANONICAL["model"])
-    ) or "model"
 
-    # Normalize columns expected by feature logic
+    # Normalize columns to expected names for feature logic
     df = df.rename(
         columns={
-            trip_col: "Trip_ID",
-            time_col: "ltime",
-            lat_col: "Latitude",
-            lon_col: "Longitude",
-            alt_col: "altitude",
-            mdl_col: "model",
+            colmap['trip_id']: "Trip_ID",
+            colmap['time']: "ltime",
+            colmap['lat']: "Latitude",
+            colmap['lon']: "Longitude",
         }
     )
+    
+    # Handle optional columns
+    if colmap['altitude'] and colmap['altitude'] in df.columns:
+        df = df.rename(columns={colmap['altitude']: "altitude"})
+    if colmap['model'] and colmap['model'] in df.columns:
+        df = df.rename(columns={colmap['model']: "model"})
 
     # Types & basic NA handling
     df["ltime"] = pd.to_datetime(df["ltime"], errors="coerce")
@@ -311,6 +399,14 @@ def _activity_to_binary(s: pd.Series) -> pd.Series:
 class EffortClassifier(BaseModel):
     """
     Binary fishing vs non-fishing classifier with engineered spatiotemporal features.
+    
+    Automatically detects column names if not provided. Supports common variations:
+    - Trip ID: 'trip_id', 'Trip_ID', 'TRIP_ID', 'voyage_id'
+    - Latitude: 'latitude', 'Latitude', 'lat', 'LAT'
+    - Longitude: 'longitude', 'Longitude', 'lon', 'LON'
+    - Timestamp: 'timestamp', 'time', 'ltime', 'datetime'
+    
+    Methods:
     - fit_df: trains on a labeled dataframe
     - predict_df: returns predictions (+ optional per-trip median smoothing)
     """
@@ -333,12 +429,52 @@ class EffortClassifier(BaseModel):
         self,
         df: pd.DataFrame,
         label_col: str = "Activity",
-        colmap: dict[str, str] | None = None,
-        feature_kwargs: dict[str, any] | None = None,
+        trip_col: Optional[str] = None,
+        lat_col: Optional[str] = None,
+        lon_col: Optional[str] = None,
+        time_col: Optional[str] = None,
+        feature_kwargs: Optional[dict] = None,
     ) -> EffortClassifier:
-        """Train on per-point labeled data."""
+        """
+        Train on per-point labeled data.
+        
+        Column names are automatically detected if not provided.
+        
+        Args:
+            df: DataFrame with GPS tracks and labels
+            label_col: Column with activity labels ('Fishing', 'Searching', etc.)
+            trip_col: Trip ID column (auto-detected if None)
+            lat_col: Latitude column (auto-detected if None)
+            lon_col: Longitude column (auto-detected if None)
+            time_col: Timestamp column (auto-detected if None)
+            feature_kwargs: Additional arguments for feature engineering
+        
+        Returns:
+            Self (trained classifier)
+        
+        Examples:
+            # Auto-detect all columns
+            >>> clf = EffortClassifier()
+            >>> clf.fit_df(training_data)
+            
+            # Specify custom columns
+            >>> clf.fit_df(
+            ...     training_data,
+            ...     lat_col='my_lat',
+            ...     lon_col='my_lon'
+            ... )
+        """
         feature_kwargs = feature_kwargs or {}
-        df_feat = _add_features(df, **feature_kwargs, colmap=colmap)
+        
+        # Add column parameters to feature_kwargs
+        feature_kwargs.update({
+            'trip_col': trip_col,
+            'lat_col': lat_col,
+            'lon_col': lon_col,
+            'time_col': time_col,
+        })
+        
+        df_feat = _add_features(df, **feature_kwargs)
 
         if label_col not in df_feat.columns:
             raise ValueError(f"Label column '{label_col}' not found in dataframe.")
@@ -354,16 +490,68 @@ class EffortClassifier(BaseModel):
     def predict_df(
         self,
         df: pd.DataFrame,
-        feature_kwargs: dict[str, any] | None = None,
+        trip_col: Optional[str] = None,
+        lat_col: Optional[str] = None,
+        lon_col: Optional[str] = None,
+        time_col: Optional[str] = None,
+        feature_kwargs: Optional[dict] = None,
         return_proba: bool = True,
     ) -> pd.DataFrame:
-        """Predict on raw points; returns dataframe with 'effort_pred' (0/1) and 'effort_prob'."""
+        """
+        Predict on raw points; returns dataframe with 'effort_pred' (0/1) and 'effort_prob'.
+        
+        Column names are automatically detected if not provided. Supports common
+        variations like 'latitude', 'Latitude', 'lat', 'LAT', etc.
+        
+        Args:
+            df: DataFrame with GPS tracks
+            trip_col: Trip ID column (auto-detected if None)
+            lat_col: Latitude column (auto-detected if None)
+            lon_col: Longitude column (auto-detected if None)
+            time_col: Timestamp column (auto-detected if None)
+            feature_kwargs: Additional arguments for feature engineering
+            return_proba: Whether to return probability scores
+        
+        Returns:
+            DataFrame with predictions:
+            - effort_pred: Binary classification (1=fishing, 0=non-fishing)
+            - effort_prob: Fishing probability (0-1) if return_proba=True
+        
+        Examples:
+            # Auto-detect all columns
+            >>> clf = EffortClassifier.load_trained("rf")
+            >>> predictions = clf.predict_df(test_data)
+            
+            # Specify custom columns
+            >>> predictions = clf.predict_df(
+            ...     test_data,
+            ...     lat_col='my_latitude',
+            ...     lon_col='my_longitude'
+            ... )
+            
+            # Works with any naming convention
+            >>> df1 = pd.DataFrame({'Latitude': ..., 'Longitude': ...})
+            >>> df2 = pd.DataFrame({'lat': ..., 'lon': ...})
+            >>> df3 = pd.DataFrame({'LAT': ..., 'LON': ...})
+            >>> # All work:
+            >>> clf.predict_df(df1)
+            >>> clf.predict_df(df2)
+            >>> clf.predict_df(df3)
+        """
         feature_kwargs = feature_kwargs or {}
         if self.pipeline is None:
             raise RuntimeError("Model is not trained/loaded.")
 
+        # Add column parameters to feature_kwargs
+        feature_kwargs.update({
+            'trip_col': trip_col,
+            'lat_col': lat_col,
+            'lon_col': lon_col,
+            'time_col': time_col,
+        })
+
         if not set(self.feat_cols).issubset(df.columns):
-            print("computing features..")
+            logger.info("Computing features...")
             df = _add_features(df, **feature_kwargs)
 
         X = df[self.feat_cols].astype("float32")
@@ -374,7 +562,7 @@ class EffortClassifier(BaseModel):
             # Fall back to 0/1 as probability proxy if model lacks predict_proba
             proba = pred_int.astype(float)
 
-        df["effort_pred"] = self.pipeline.predict(X)
+        df["effort_pred"] = pred_int
         if return_proba:
             df["effort_prob"] = proba
         return df
@@ -396,6 +584,19 @@ class EffortClassifier(BaseModel):
 
     @classmethod
     def load_trained(cls, model_name="rf"):
+        """
+        Load a pre-trained model from artifacts directory.
+        
+        Args:
+            model_name: Name of the model to load (default: 'rf')
+        
+        Returns:
+            EffortClassifier with loaded model
+        
+        Example:
+            >>> clf = EffortClassifier.load_trained("rf")
+            >>> predictions = clf.predict_df(data)
+        """
         path = (
             Path(__file__).resolve().parent / "artifacts" / f"effort_classifier_{model_name}.joblib"
         )
