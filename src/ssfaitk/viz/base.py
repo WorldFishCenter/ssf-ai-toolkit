@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..utils.logging import get_logger
+from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 

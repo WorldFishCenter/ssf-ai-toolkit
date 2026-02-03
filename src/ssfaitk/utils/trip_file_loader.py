@@ -26,7 +26,13 @@ logger = logging.getLogger(__name__)
 # ================================================================
 
 # Default data directory (adjust for your system)
-DEFAULT_DATA_DIR = Path("~/Documents/GitHub/ssf-ai-toolkit/examples/data/pds-trips/zanzibar").expanduser()
+
+DEFAULT_DATA_DIRS = {
+    'zanzibar': Path("~/Documents/GitHub/ssf-ai-toolkit/examples/data/pds-trips/zanzibar").expanduser(),
+    'kenya': Path("~/Documents/GitHub/ssf-ai-toolkit/examples/data/pds-trips/kenya").expanduser(),
+    'mozambique': Path("~/Documents/GitHub/ssf-ai-toolkit/examples/data/pds-trips/mozambique").expanduser()
+}
+DEFAULT_COUNTRY = 'zanzibar'
 
 # File naming pattern
 FILE_PATTERN = "pds-tracks_{trip_id}.parquet"
@@ -38,6 +44,7 @@ FILE_PATTERN = "pds-tracks_{trip_id}.parquet"
 
 def load_trip(
     trip_id: Union[str, int, float],
+    country: Optional[str] = 'zanzibar',
     data_dir: Optional[Path] = None
 ) -> pd.DataFrame:
     """
@@ -46,6 +53,7 @@ def load_trip(
     Args:
         trip_id: Trip identifier (can be string, int, or float)
         data_dir: Directory containing trip files (default: DEFAULT_DATA_DIR)
+        country: Which country data to retrieve
     
     Returns:
         DataFrame with trip data
@@ -55,8 +63,10 @@ def load_trip(
         >>> df = load_trip('14119254')
         >>> df = load_trip(14119254.0)
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     # Handle different trip_id types
     if isinstance(trip_id, float):
         trip_id = int(trip_id)
@@ -84,6 +94,7 @@ def load_trip(
 
 def load_trips(
     trip_ids: List[Union[str, int, float]],
+    country: Optional[str] = 'zanzibar',
     data_dir: Optional[Path] = None,
     combine: bool = True
 ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
@@ -94,6 +105,7 @@ def load_trips(
         trip_ids: List of trip identifiers
         data_dir: Directory containing trip files
         combine: If True, combine all trips into single DataFrame
+        country: Which country data to retrieve
     
     Returns:
         Single DataFrame (if combine=True) or list of DataFrames (if combine=False)
@@ -108,8 +120,10 @@ def load_trips(
         >>> print(f"Trip 1: {len(dfs[0]):,} points")
         >>> print(f"Trip 2: {len(dfs[1]):,} points")
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     logger.info(f"Loading {len(trip_ids)} trips...")
     
     dataframes = []
@@ -141,6 +155,7 @@ def load_trips(
 
 def load_random_trips(
     n: int,
+    country: Optional[str] = 'zanzibar',
     data_dir: Optional[Path] = None,
     combine: bool = True,
     seed: Optional[int] = None
@@ -153,6 +168,7 @@ def load_random_trips(
         data_dir: Directory containing trip files
         combine: If True, combine into single DataFrame
         seed: Random seed for reproducibility
+        country: Which country data to retrieve
     
     Returns:
         Single DataFrame (if combine=True) or list of DataFrames
@@ -170,8 +186,10 @@ def load_random_trips(
         >>> # Reproducible random selection
         >>> df = load_random_trips(10, seed=42)
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     # Get all available trips
     available_trips = list_available_trips(data_dir)
     
@@ -192,11 +210,12 @@ def load_random_trips(
     logger.info(f"Selected trip IDs: {selected_trips[:10]}{'...' if len(selected_trips) > 10 else ''}")
     
     # Load selected trips
-    return load_trips(selected_trips, data_dir, combine)
+    return load_trips(selected_trips, country, data_dir, combine)
 
 
 def load_all_trips(
     data_dir: Optional[Path] = None,
+    country: Optional[str] = 'zanzibar',
     combine: bool = True,
     max_trips: Optional[int] = None
 ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
@@ -207,6 +226,7 @@ def load_all_trips(
         data_dir: Directory containing trip files
         combine: If True, combine into single DataFrame
         max_trips: Maximum number of trips to load (optional)
+        country: Which country data to retrieve
     
     Returns:
         Single DataFrame (if combine=True) or list of DataFrames
@@ -222,8 +242,10 @@ def load_all_trips(
         >>> # Load first 50 trips
         >>> df = load_all_trips(max_trips=50)
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     available_trips = list_available_trips(data_dir)
     
     if max_trips and max_trips < len(available_trips):
@@ -232,19 +254,23 @@ def load_all_trips(
     else:
         logger.warning(f"Loading ALL {len(available_trips)} trips - this may take a while!")
     
-    return load_trips(available_trips, data_dir, combine)
+    return load_trips(available_trips, country, data_dir, combine)
 
 
 # ================================================================
 # Helper Functions
 # ================================================================
 
-def list_available_trips(data_dir: Optional[Path] = None) -> List[str]:
+def list_available_trips(
+    data_dir: Optional[Path] = None,
+    country: Optional[str] = 'zanzibar',
+) -> List[str]:
     """
     List all available trip IDs in the data directory.
     
     Args:
         data_dir: Directory containing trip files
+        country: Which country data to retrieve
     
     Returns:
         List of trip IDs (as strings)
@@ -254,8 +280,10 @@ def list_available_trips(data_dir: Optional[Path] = None) -> List[str]:
         >>> print(f"Found {len(trips)} trips")
         >>> print(f"First 10: {trips[:10]}")
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     if not data_dir.exists():
         raise FileNotFoundError(
             f"Data directory not found: {data_dir}\n"
@@ -286,6 +314,7 @@ def list_available_trips(data_dir: Optional[Path] = None) -> List[str]:
 
 def get_trip_info(
     trip_id: Union[str, int, float],
+    country: Optional[str] = 'zanzibar',
     data_dir: Optional[Path] = None
 ) -> dict:
     """
@@ -294,6 +323,7 @@ def get_trip_info(
     Args:
         trip_id: Trip identifier
         data_dir: Directory containing trip files
+        country: Which country data to retrieve
     
     Returns:
         Dictionary with trip metadata
@@ -303,8 +333,10 @@ def get_trip_info(
         >>> print(f"Points: {info['n_points']}")
         >>> print(f"File size: {info['file_size_mb']:.1f} MB")
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     # Handle trip_id types
     if isinstance(trip_id, float):
         trip_id = int(trip_id)
@@ -344,12 +376,16 @@ def get_trip_info(
     return info
 
 
-def summarize_trips(data_dir: Optional[Path] = None) -> pd.DataFrame:
+def summarize_trips(
+    data_dir: Optional[Path] = None,
+    country: Optional[str] = 'zanzibar',
+) -> pd.DataFrame:
     """
     Create summary table of all available trips.
     
     Args:
         data_dir: Directory containing trip files
+        country: Which country data to retrieve
     
     Returns:
         DataFrame with trip summaries
@@ -362,8 +398,10 @@ def summarize_trips(data_dir: Optional[Path] = None) -> pd.DataFrame:
         >>> top_trips = summary.nlargest(10, 'n_points')
         >>> print(top_trips)
     """
-    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-    
+    data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+    if country in DEFAULT_DATA_DIRS.keys():
+        data_dir = DEFAULT_DATA_DIRS[country]
+
     trip_ids = list_available_trips(data_dir)
     
     logger.info(f"Summarizing {len(trip_ids)} trips...")
@@ -471,15 +509,18 @@ class TripLoader:
         >>> trips = loader.list_trips()
     """
     
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Optional[Path] = None, country: Optional[str] = 'zanzibar'):
         """
         Initialize trip loader.
         
         Args:
-            data_dir: Directory containing trip files (default: DEFAULT_DATA_DIR)
+            data_dir: Directory containing trip files (default: DEFAULT_DATA_DIRS)
+            country: Which country data to retrieve
         """
-        self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
-        
+        self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIRS[DEFAULT_COUNTRY]
+        if country in DEFAULT_DATA_DIRS.keys():
+            self.data_dir = DEFAULT_DATA_DIRS[country]
+
         if not self.data_dir.exists():
             raise FileNotFoundError(
                 f"Data directory not found: {self.data_dir}\n"
@@ -495,27 +536,30 @@ class TripLoader:
     def load_many(
         self,
         trip_ids: List[Union[str, int, float]],
+        country: Optional[str] = 'zanzibar',
         combine: bool = True
     ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
         """Load multiple specific trips."""
-        return load_trips(trip_ids, self.data_dir, combine)
+        return load_trips(trip_ids, country, self.data_dir, combine)
     
     def load_random(
         self,
         n: int,
+        country: Optional[str] = 'zanzibar',
         combine: bool = True,
         seed: Optional[int] = None
     ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
         """Load N random trips."""
-        return load_random_trips(n, self.data_dir, combine, seed)
+        return load_random_trips(n, country, self.data_dir, combine, seed)
     
     def load_all(
         self,
+        country: Optional[str] = 'zanzibar',
         combine: bool = True,
         max_trips: Optional[int] = None
     ) -> Union[pd.DataFrame, List[pd.DataFrame]]:
         """Load all available trips."""
-        return load_all_trips(self.data_dir, combine, max_trips)
+        return load_all_trips(self.data_dir, country, combine, max_trips)
     
     def list_trips(self) -> List[str]:
         """List all available trip IDs."""

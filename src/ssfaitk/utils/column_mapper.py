@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set
 import pandas as pd
 
-from .logging import get_logger
+from .logger import get_logger
 
 logger = get_logger(__name__)
 

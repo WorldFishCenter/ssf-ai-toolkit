@@ -20,3 +20,8 @@ auths/
 examples/data/pds-trips/zanzibar/other trips
 examples/notebooks/coastline_data
 examples/notebooks/test_outputs
+examples/data/pds-trips
+examples/notebooks/effort prediction visuals
+examples/notebooks/fishing_effort_outputs
+examples/notebooks/gear_behavior_analysis
+data/coastline
