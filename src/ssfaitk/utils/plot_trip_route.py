@@ -23,6 +23,9 @@ import numpy as np
 
 from ssfaitk.utils.column_mapper import resolve_column_name
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.collections import LineCollection
 # Try to import folium
 try:
     import folium
@@ -520,6 +523,261 @@ def plot_trip_route(
     if stats and 'total_distance_km' in stats:
         print(f"  Distance: {stats['total_distance_km']:.1f} km")
     
+    return output_path
+
+
+def plot_trip_route_png(
+        df: pd.DataFrame,
+        trip_id: str,
+        output_path: str = 'trip_route.png',
+        effort_col: Optional[str] = None,
+        lat_col: Optional[str] = None,
+        lon_col: Optional[str] = None,
+        trip_col: Optional[str] = None,
+        speed_col: Optional[str] = None,
+        time_col: Optional[str] = None,
+        figsize: tuple = (22, 18),
+        dpi: int = 600,
+        show_direction_arrows: bool = True,
+        arrow_interval: int = 25,
+        line_width: float = 3.0,
+        show_stats: bool = True,
+) -> Path:
+    """
+    Create a professional static PNG map showing a single trip route.
+
+    Args:
+        df: DataFrame with GPS track data
+        trip_id: ID of the trip to visualize
+        output_path: Where to save the PNG map
+        effort_col: Column with fishing effort (0/1) - auto-detected if None
+        lat_col: Latitude column - auto-detected if None
+        lon_col: Longitude column - auto-detected if None
+        trip_col: Trip ID column - auto-detected if None
+        speed_col: Speed column (optional) - auto-detected if None
+        time_col: Timestamp column - auto-detected if None
+        figsize: Figure size in inches (width, height)
+        dpi: Resolution in dots per inch
+        show_direction_arrows: Whether to show direction arrows
+        arrow_interval: Points between direction arrows
+        line_width: Width of route lines
+        show_stats: Whether to show statistics panel
+
+    Returns:
+        Path to the saved PNG file
+
+    Example:
+        >>> df = pd.read_parquet('tracks.parquet')
+        >>> plot_trip_route_png(df, trip_id='12345', output_path='trip_12345.png')
+    """
+
+    # Auto-detect columns
+    effort_col = resolve_column_name(df, 'effort', effort_col, required=False)
+    lat_col = resolve_column_name(df, 'latitude', lat_col, required=True)
+    lon_col = resolve_column_name(df, 'longitude', lon_col, required=True)
+    trip_col = resolve_column_name(df, 'trip_id', trip_col, required=True)
+    speed_col = resolve_column_name(df, 'speed', speed_col, required=False)
+    time_col = resolve_column_name(df, 'timestamp', time_col, required=False)
+
+    # Validate required columns
+    if not all([lat_col, lon_col, trip_col]):
+        raise ValueError(
+            f"Could not find required columns. Found: {df.columns.tolist()}\n"
+            f"Need: latitude, longitude, trip_id"
+        )
+
+    # Filter to specific trip
+    trip_df = df[df[trip_col] == trip_id].copy()
+
+    if len(trip_df) == 0:
+        raise ValueError(f"No data found for trip ID: {trip_id}")
+
+    # Sort by time if available
+    if time_col and time_col in trip_df.columns:
+        trip_df['timestamp'] = pd.to_datetime(trip_df[time_col])
+        trip_df = trip_df.sort_values('timestamp').reset_index(drop=True)
+    else:
+        trip_df = trip_df.reset_index(drop=True)
+
+    print(f"Plotting trip {trip_id} with {len(trip_df)} points...")
+
+    # Calculate statistics
+    stats = calculate_trip_statistics(trip_df, effort_col) if effort_col else {}
+
+    # Extract coordinates
+    lats = trip_df[lat_col].values
+    lons = trip_df[lon_col].values
+
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    # Color scheme
+    FISHING_COLOR = '#d62728'  # Red
+    NON_FISHING_COLOR = '#1f77b4'  # Blue
+    START_COLOR = '#2ca02c'  # Green
+    END_COLOR = '#d62728'  # Red
+
+    # Plot route segments based on fishing activity
+    if effort_col and effort_col in trip_df.columns:
+        effort = trip_df[effort_col].values
+
+        # Create line segments
+        points = np.column_stack([lons, lats])
+        segments = []
+        colors = []
+
+        for i in range(len(points) - 1):
+            segment = [points[i], points[i + 1]]
+            segments.append(segment)
+
+            # Color based on fishing activity
+            if effort[i] == 1:
+                colors.append(FISHING_COLOR)
+            else:
+                colors.append(NON_FISHING_COLOR)
+
+        # Create LineCollection for efficient plotting
+        lc = LineCollection(segments, colors=colors, linewidths=line_width,
+                            alpha=0.8, zorder=2)
+        ax.add_collection(lc)
+    else:
+        # Plot as single line if no effort data
+        ax.plot(lons, lats, color='gray', linewidth=line_width,
+                alpha=0.7, zorder=2, label='Route')
+
+    # Plot start point
+    ax.scatter(lons[0], lats[0], s=300, c=START_COLOR, marker='o',
+               edgecolors='white', linewidths=2, zorder=5, label='Start')
+    ax.scatter(lons[0], lats[0], s=100, c='white', marker='>',
+               zorder=6)
+
+    # Plot end point
+    ax.scatter(lons[-1], lats[-1], s=300, c=END_COLOR, marker='o',
+               edgecolors='white', linewidths=2, zorder=5, label='End')
+    ax.scatter(lons[-1], lats[-1], s=100, c='white', marker='s',
+               zorder=6)
+
+    # Add direction arrows
+    if show_direction_arrows and len(trip_df) > arrow_interval:
+        for i in range(0, len(trip_df) - 1, arrow_interval):
+            if i + 1 >= len(trip_df):
+                break
+
+            lon1, lat1 = lons[i], lats[i]
+            lon2, lat2 = lons[i + 1], lats[i + 1]
+
+            # Calculate direction
+            dlon = lon2 - lon1
+            dlat = lat2 - lat1
+
+            # Draw arrow
+            ax.annotate('', xy=(lon2, lat2), xytext=(lon1, lat1),
+                        arrowprops=dict(arrowstyle='->', color='black',
+                                        lw=1.5, alpha=0.5),
+                        zorder=4)
+
+    # Set axis labels
+    ax.set_xlabel('Longitude', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Latitude', fontsize=12, fontweight='bold')
+
+    # Set title
+    title = f'Trip Route Visualization - Trip ID: {trip_id}'
+    ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
+
+    # Add grid
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+
+    # Equal aspect ratio to avoid distortion
+    ax.set_aspect('equal', adjustable='box')
+
+    # Add padding around the route
+    lon_range = lons.max() - lons.min()
+    lat_range = lats.max() - lats.min()
+    padding = max(lon_range, lat_range) * 0.1
+
+    ax.set_xlim(lons.min() - padding, lons.max() + padding)
+    ax.set_ylim(lats.min() - padding, lats.max() + padding)
+
+    # Create legend
+    if effort_col and effort_col in trip_df.columns:
+        fishing_line = mpatches.Patch(color=FISHING_COLOR, label='Fishing Activity')
+        non_fishing_line = mpatches.Patch(color=NON_FISHING_COLOR, label='Non-Fishing')
+        start_marker = mpatches.Patch(color=START_COLOR, label='Start Point')
+        end_marker = mpatches.Patch(color=END_COLOR, label='End Point')
+
+        ax.legend(handles=[fishing_line, non_fishing_line, start_marker, end_marker],
+                  loc='lower right', fontsize=10, framealpha=0.9)
+    else:
+        ax.legend(loc='lower right', fontsize=10, framealpha=0.9)
+
+    # Add statistics panel
+    if show_stats and stats:
+        stats_text_lines = ['Trip Statistics\n' + '=' * 25]
+        stats_text_lines.append(f'Total Points: {stats["total_points"]:,}')
+
+        if 'fishing_points' in stats:
+            stats_text_lines.append(
+                f'Fishing: {stats["fishing_points"]:,} ({stats["fishing_percentage"]:.1f}%)'
+            )
+            stats_text_lines.append(
+                f'Non-Fishing: {stats["non_fishing_points"]:,} '
+                f'({100 - stats["fishing_percentage"]:.1f}%)'
+            )
+
+        if 'duration_hours' in stats:
+            duration = stats['duration']
+            days = duration.days
+            hours = duration.seconds // 3600
+            minutes = (duration.seconds % 3600) // 60
+            stats_text_lines.append(f'Duration: {days}d {hours}h {minutes}m')
+
+        if 'start_time' in stats:
+            stats_text_lines.append(
+                f'Start: {stats["start_time"].strftime("%Y-%m-%d %H:%M")}'
+            )
+            stats_text_lines.append(
+                f'End: {stats["end_time"].strftime("%Y-%m-%d %H:%M")}'
+            )
+
+        if 'total_distance_km' in stats:
+            stats_text_lines.append(f'Distance: {stats["total_distance_km"]:.1f} km')
+            stats_text_lines.append(f'Displacement: {stats["displacement_km"]:.1f} km')
+
+        if 'avg_speed' in stats and pd.notna(stats['avg_speed']):
+            stats_text_lines.append(f'Avg Speed: {stats["avg_speed"]:.1f} km/h')
+            if 'avg_fishing_speed' in stats and pd.notna(stats['avg_fishing_speed']):
+                stats_text_lines.append(f'  Fishing: {stats["avg_fishing_speed"]:.1f} km/h')
+            if 'avg_transit_speed' in stats and pd.notna(stats['avg_transit_speed']):
+                stats_text_lines.append(f'  Transit: {stats["avg_transit_speed"]:.1f} km/h')
+
+        stats_text = '\n'.join(stats_text_lines)
+
+        # Add text box with statistics
+        props = dict(boxstyle='round', facecolor='white', alpha=0.9,
+                     edgecolor='#2171b5', linewidth=2)
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+                fontsize=9, verticalalignment='top', bbox=props,
+                family='monospace')
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(str(output_path), dpi=dpi, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close()
+
+    print(f"✓ PNG map saved to: {output_path}")
+    print(f"  Total points: {len(trip_df)}")
+    if stats and 'fishing_points' in stats:
+        print(f"  Fishing: {stats['fishing_points']} ({stats['fishing_percentage']:.1f}%)")
+    if stats and 'duration_hours' in stats:
+        print(f"  Duration: {stats['duration_hours']:.1f} hours")
+    if stats and 'total_distance_km' in stats:
+        print(f"  Distance: {stats['total_distance_km']:.1f} km")
+
     return output_path
 
 
