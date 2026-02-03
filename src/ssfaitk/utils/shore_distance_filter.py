@@ -33,6 +33,7 @@ REGIONAL_BBOXES = {
     'timor_leste': (-9.5, -8.0, 124.0, 127.5),
     'wio': (-27.0, -0.5, 32.0, 42.0)  # Western Indian Ocean
 }
+DEFAULT_REGION = 'wio'
 
 REGIONAL_HARBORS = {}
 """'zanzibar': [(-6.1659, 39.1959), (-6.1435, 39.1937), (-6.2285, 39.1835), (-6.0755, 39.2992), (-6.4760, 39.5068)],
@@ -224,6 +225,9 @@ class CoastlineDistanceFilter:
             bbox = REGIONAL_BBOXES[self.region.lower()]
             logger.info(f"Region '{self.region}' bbox: {bbox}")
             return bbox
+        elif self.region is None:
+            bbox = REGIONAL_BBOXES[DEFAULT_REGION]
+            logger.info(f"Region '{DEFAULT_REGION}' bbox: {bbox}")
         else:
             logger.warning("No region - using full coastline (slower!)")
             return None

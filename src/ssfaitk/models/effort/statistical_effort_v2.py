@@ -30,7 +30,13 @@ from typing import Optional, List
 
 import numpy as np
 import pandas as pd
-
+# Import shore filtering utilities (optional - only used if shore filtering enabled)
+try:
+    from ...utils.shore_distance_filter import add_shore_filtering, CoastlineDistanceFilter
+    SHORE_FILTER_AVAILABLE = True
+except ImportError:
+    SHORE_FILTER_AVAILABLE = False
+    logging.warning("Shore filtering utilities not available - shore filtering will be disabled")
 # Import column mapper for flexible column name handling
 try:
     from ...utils.column_mapper import resolve_column_name
@@ -38,6 +44,15 @@ try:
 except ImportError:
     COLUMN_MAPPER_AVAILABLE = False
     logging.warning("Column mapper not available - falling back to strict column names")
+
+# Get the absolute path to THIS file
+THIS_FILE = Path(__file__).resolve()
+REPO_ROOT = THIS_FILE.parent.parent.parent.parent.parent
+COASTLINE_DIR = REPO_ROOT / 'data' / 'coastline'
+
+# Default shapefiles (as absolute paths)
+DEFAULT_COASTLINE_LINES = str(COASTLINE_DIR / 'coastline_lines_wio.shp')
+DEFAULT_COASTLINE_LAND = str(COASTLINE_DIR / 'coastline_land_wio.shp')
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +426,16 @@ class FishingBehaviorRules:
             "weight_interaction_search_pattern": 2.0,   # medium speed + high turning
             # Classification threshold
             "fishing_score_threshold": 0.5,
+
+            # Shore/coastline filtering (optional) - NEW
+            "enable_shore_filtering": False,  # Set to True to enable
+            "shore_filter_region": None,  # e.g., 'zanzibar', 'kenya', etc.
+            "shore_filter_method": "coastline",  # 'coastline' or 'buffered'
+            "shore_coastline_shapefile": None,  # Path to coastline lines shapefile
+            "shore_land_shapefile": None,  # Path to land polygon shapefile
+            "shore_min_distance_km": 0.5,  # Minimum distance from coast (km)
+            "shore_filter_land_points": True,  # Remove points ON land
+            "shore_filter_only_fishing": True,  # Only filter fishing points (faster)
         }
 
     def compute_fishing_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -590,6 +615,7 @@ class StatisticalEffortClassifier:
     def predict(
         self,
         df: pd.DataFrame,
+        filter: Optional[bool] = False,
         trip_col: Optional[str] = None,
         lat_col: Optional[str] = None,
         lon_col: Optional[str] = None,
@@ -730,7 +756,93 @@ class StatisticalEffortClassifier:
         logger.info(f"Classification complete: {fishing_pct:.1f}% classified as fishing")
         logger.info(f"State machine smoothing applied (min duration: {self.config['min_state_duration']} points)")
 
+        if filter:
+            self.config['enable_shore_filtering'] = True
+            self.config["shore_coastline_shapefile"] = DEFAULT_COASTLINE_LINES # '../../../data/coastline/coastline_lines_wio.shp'
+            self.config["shore_land_shapefile"] = DEFAULT_COASTLINE_LAND # '../../../data/coastline/coastline_land_wio.shp'
+            df = self._apply_shore_filtering(df)
+
         return df
+
+    def _apply_shore_filtering(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply shore/coastline filtering to remove land points and near-shore points.
+
+        This is an optional post-processing step that filters out:
+        - Points on land (if shore_filter_land_points=True)
+        - Points too close to shore (within shore_min_distance_km)
+
+        Only applied if enable_shore_filtering=True in config.
+
+        Args:
+            df: DataFrame with predictions
+
+        Returns:
+            DataFrame with shore filtering applied (points marked as non-fishing)
+
+        Raises:
+            ImportError: If shore filtering utilities not available
+            ValueError: If required shapefiles not provided
+        """
+        cfg = self.config
+
+        # Check if shore filtering is enabled
+        if not cfg.get("enable_shore_filtering", False):
+            logger.info("Shore filtering disabled - skipping")
+            return df
+
+        # Check if utilities are available
+        if not SHORE_FILTER_AVAILABLE:
+            logger.warning(
+                "Shore filtering enabled but utilities not available. "
+                "Install shore filtering dependencies or disable shore filtering."
+            )
+            return df
+
+        # Validate required parameters
+        if not cfg.get("shore_coastline_shapefile") or not cfg.get("shore_land_shapefile"):
+            logger.warning(
+                "Shore filtering enabled but shapefiles not provided. "
+                "Set 'shore_coastline_shapefile' and 'shore_land_shapefile' in config."
+            )
+            return df
+
+        logger.info(f"Applying shore filtering (region: {cfg.get('shore_filter_region', 'wio')})...")
+        logger.info(f"  Method: {cfg.get('shore_filter_method', 'coastline')}")
+        logger.info(f"  Min distance from coast: {cfg.get('shore_min_distance_km', 0.7)} km")
+        logger.info(f"  Filter land points: {cfg.get('shore_filter_land_points', True)}")
+        logger.info(f"  Filter only fishing: {cfg.get('shore_filter_only_fishing', True)}")
+
+        try:
+            # Apply shore filtering
+            df_filtered = add_shore_filtering(
+                df,
+                region=cfg.get("shore_filter_region", 'wio'),
+                method=cfg.get("shore_filter_method", "coastline"),
+                coastline_shapefile=cfg.get("shore_coastline_shapefile"),
+                land_shapefile=cfg.get("shore_land_shapefile"),
+                min_distance_km=cfg.get("shore_min_distance_km", 0.7),
+                filter_land_points=cfg.get("shore_filter_land_points", True),
+                filter_only_fishing=cfg.get("shore_filter_only_fishing", True)
+            )
+
+            # Log filtering results
+            if "is_fishing" in df.columns and "is_fishing" in df_filtered.columns:
+                original_fishing = df["is_fishing"].sum()
+                filtered_fishing = df_filtered["is_fishing"].sum()
+                removed = original_fishing - filtered_fishing
+
+                logger.info(f"Shore filtering complete:")
+                logger.info(f"  Original fishing points: {original_fishing:,}")
+                logger.info(f"  After filtering: {filtered_fishing:,}")
+                logger.info(f"  Removed (land/near-shore): {removed:,} ({removed / original_fishing * 100:.1f}%)")
+
+            return df_filtered
+
+        except Exception as e:
+            logger.error(f"Shore filtering failed: {e}")
+            logger.warning("Returning unfiltered results")
+            return df
 
     def predict_trips(self, df: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """Alias for predict() - more intuitive name."""
