@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 
-from ..utils.logging import get_logger
+from ..utils.logger import get_logger
 from .base import (
     aggregate_to_grid,
     calculate_grid_bounds,
