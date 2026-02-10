@@ -193,11 +193,11 @@ check_python_env <- function() {
     packages <- reticulate::py_list_packages()
     if ("ssfaitk" %in% packages$package) {
       ssfaitk_row <- packages[packages$package == "ssfaitk", ]
-      cat("✓ ssfaitk version:", ssfaitk_row$version, "\n")
-      cat("  Location:", ssfaitk_row$location, "\n")
+      cat("[OK] ssfaitk version:", ssfaitk_row$version, "\n")
+      cat("     Location:", ssfaitk_row$location, "\n")
     } else {
-      cat("✗ ssfaitk is NOT installed\n")
-      cat("  Install with: install_ssfaitk()\n")
+      cat("[!] ssfaitk is NOT installed\n")
+      cat("    Install with: install_ssfaitk()\n")
     }
   }, error = function(e) {
     cat("Could not list packages. Error:", conditionMessage(e), "\n")
