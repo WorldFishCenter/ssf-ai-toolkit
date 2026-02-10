@@ -25,3 +25,21 @@ examples/notebooks/effort prediction visuals
 examples/notebooks/fishing_effort_outputs
 examples/notebooks/gear_behavior_analysis
 data/coastline
+CLAUDE.md
+
+# R package build artifacts
+Rplug/man/*.Rd
+Rplug/.Rproj.user
+Rplug/*.Rproj
+Rplug/.Rhistory
+Rplug/.RData
+Rplug/.Ruserdata
+Rplug/check/
+Rplug/*.tar.gz
+Rplug/*.tgz
+Rplug/inst/doc/
+.github-depends.Rds
+.github-R-version
+
+# R model files
+*.joblib
