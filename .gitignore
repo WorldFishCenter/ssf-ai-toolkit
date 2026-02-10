@@ -28,7 +28,6 @@ data/coastline
 CLAUDE.md
 
 # R package build artifacts
-Rplug/man/*.Rd
 Rplug/.Rproj.user
 Rplug/*.Rproj
 Rplug/.Rhistory
