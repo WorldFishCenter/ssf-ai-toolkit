@@ -64,11 +64,25 @@ install_ssfaitk <- function(method = "auto",
                             package_url = "..") {
   # Determine if we're doing a local editable install or remote install
   if (package_url == "..") {
-    # Local editable install
-    package_spec <- paste0("-e ", package_url)
+    # Local editable install - find Python package root
+    python_pkg_path <- .find_python_package_root()
+
+    if (is.null(python_pkg_path)) {
+      stop(
+        "Could not locate Python package root automatically.\n",
+        "Please specify the path explicitly:\n",
+        "  install_ssfaitk(package_url = '/absolute/path/to/ssf-ai-toolkit')\n",
+        "Or install from GitHub:\n",
+        "  install_ssfaitk(package_url = 'git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git')",
+        call. = FALSE
+      )
+    }
+
+    package_spec <- paste0("-e ", python_pkg_path)
     message("Installing ssfaitk from local source in editable mode...")
+    message("Using path: ", python_pkg_path)
   } else {
-    # Remote install
+    # Remote install or explicit path
     package_spec <- package_url
     message("Installing ssfaitk from: ", package_url)
   }
@@ -92,10 +106,63 @@ install_ssfaitk <- function(method = "auto",
       "Troubleshooting:\n",
       "  1. Check Python is available: reticulate::py_config()\n",
       "  2. Try manual installation: pip install -e /path/to/ssf-ai-toolkit\n",
-      "  3. For remote install: pip install git+https://github.com/user/repo.git",
+      "  3. For remote install: pip install git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git",
       call. = FALSE
     )
   })
+}
+
+# Internal helper to find Python package root
+.find_python_package_root <- function() {
+  # Method 1: If R package is installed, get its location
+  r_pkg_path <- system.file(".", package = "ssfaitk")
+  if (r_pkg_path != "") {
+    # Package is installed, go up one level
+    potential_path <- normalizePath(file.path(r_pkg_path, ".."), mustWork = FALSE)
+    if (.is_python_package_root(potential_path)) {
+      return(potential_path)
+    }
+  }
+
+  # Method 2: Check if we're in development mode (Rplug/ directory)
+  cwd <- getwd()
+  if (basename(cwd) == "Rplug") {
+    potential_path <- normalizePath(file.path(cwd, ".."), mustWork = FALSE)
+    if (.is_python_package_root(potential_path)) {
+      return(potential_path)
+    }
+  }
+
+  # Method 3: Check if we're in project root
+  if (.is_python_package_root(cwd)) {
+    return(cwd)
+  }
+
+  # Method 4: Walk up the directory tree looking for markers
+  current <- cwd
+  for (i in 1:10) {  # Max 10 levels up
+    if (.is_python_package_root(current)) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (parent == current) break  # Reached filesystem root
+    current <- parent
+  }
+
+  return(NULL)
+}
+
+# Internal helper to check if a path is the Python package root
+.is_python_package_root <- function(path) {
+  if (!dir.exists(path)) return(FALSE)
+
+  files <- list.files(path)
+
+  # Look for Python package markers: setup.py, pyproject.toml, or src/ssfaitk/
+  has_setup <- "setup.py" %in% files || "pyproject.toml" %in% files
+  has_src <- dir.exists(file.path(path, "src", "ssfaitk"))
+
+  return(has_setup || has_src)
 }
 
 #' Check Python environment configuration
