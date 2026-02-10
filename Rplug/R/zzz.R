@@ -2,7 +2,7 @@
 .ssfaitk_env <- new.env(parent = emptyenv())
 
 #' @importFrom reticulate import py_module_available
-.onLoad <- function(libname, pkgname) {
+.onAttach <- function(libname, pkgname) {
   # Display startup message
   packageStartupMessage(
     "SSF AI Toolkit R Package\n",

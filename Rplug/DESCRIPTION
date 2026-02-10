@@ -21,6 +21,7 @@ Imports:
     reticulate (>= 1.35)
 Suggests:
     testthat (>= 3.0.0),
+    waldo (>= 0.3.0),
     knitr,
     rmarkdown,
     dplyr,
