@@ -122,10 +122,10 @@ effort_predict_statistical <- function(df,
   # Get Python module
   ssfaitk <- .get_ssfaitk()
 
-  # Call Python function
+  # Call Python function (use apply_filter to avoid Python built-in name conflict)
   result <- ssfaitk$r_api$effort_predict_statistical(
     df = df,
-    filter = filter,
+    apply_filter = filter,
     trip_col = trip_col,
     lat_col = lat_col,
     lon_col = lon_col,

@@ -101,7 +101,7 @@ def effort_predict(
 
 def effort_predict_statistical(
     df: pd.DataFrame,
-    filter: bool = False,
+    apply_filter: bool = False,
     trip_col: Optional[str] = None,
     lat_col: Optional[str] = None,
     lon_col: Optional[str] = None,
@@ -115,8 +115,8 @@ def effort_predict_statistical(
 
     Args:
         df: DataFrame with GPS tracks
-        filter: Enable shore distance filtering to remove on-land and near-shore points.
-                Requires coastline data. Default: False
+        apply_filter: Enable shore distance filtering to remove on-land and near-shore points.
+                      Requires coastline data. Default: False
         trip_col: Trip ID column name (auto-detected if None)
         lat_col: Latitude column name (auto-detected if None)
         lon_col: Longitude column name (auto-detected if None)
@@ -137,7 +137,7 @@ def effort_predict_statistical(
         >>> predictions = effort_predict_statistical(tracks)
         >>>
         >>> # With shore filtering (removes on-land/near-shore points)
-        >>> predictions = effort_predict_statistical(tracks, filter=True)
+        >>> predictions = effort_predict_statistical(tracks, apply_filter=True)
     """
     # Extract column mappings from colmap if provided
     if colmap:
@@ -152,7 +152,7 @@ def effort_predict_statistical(
     # Make predictions
     return classifier.predict(
         df=df,
-        filter=filter,
+        filter=apply_filter,
         trip_col=trip_col,
         lat_col=lat_col,
         lon_col=lon_col,
