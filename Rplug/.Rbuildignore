@@ -1,0 +1,14 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^\.git$
+^\.gitignore$
+^README\.Rmd$
+^LICENSE\.md$
+^cran-comments\.md$
+^\.travis\.yml$
+^appveyor\.yml$
+^codecov\.yml$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
