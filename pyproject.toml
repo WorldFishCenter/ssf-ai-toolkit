@@ -44,6 +44,12 @@ dev = [
 [project.scripts]
 ssfaitk = "ssfaitk.cli:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ssfaitk = ["data/coastline/*.geojson"]
+
 [tool.black]
 line-length = 100
 target-version = ["py39", "py310", "py311"]
