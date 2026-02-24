@@ -108,6 +108,8 @@ def effort_predict_statistical(
     lon_col: Optional[str] = None,
     time_col: Optional[str] = None,
     colmap: Optional[dict] = None,
+    use_parallel: bool = True,
+    n_jobs: int = -1,
     config: Optional[dict] = None,
 ) -> pd.DataFrame:
     """
@@ -116,8 +118,8 @@ def effort_predict_statistical(
 
     Args:
         df: DataFrame with GPS tracks
-        apply_filter: Enable shore distance filtering to remove on-land and near-shore points.
-                      Requires coastline data. Default: False
+        apply_filter: Enable shore distance filtering to remove on-land and near-shore
+                      points. Bundled WIO coastline is used by default. Default: False
         trip_col: Trip ID column name (auto-detected if None)
         lat_col: Latitude column name (auto-detected if None)
         lon_col: Longitude column name (auto-detected if None)
@@ -125,20 +127,43 @@ def effort_predict_statistical(
         colmap: Optional dict mapping standard names to actual column names.
                 Example: {'trip_id': 'TripNumber', 'time': 'GPS_Time',
                          'lat': 'Lat', 'lon': 'Lon'}
-        config: Optional configuration dict for behavioral thresholds
+        use_parallel: Enable parallel processing across trips (default: True).
+                      Recommended for datasets with >10 trips.
+        n_jobs: Number of parallel workers. -1 = use all available CPUs (default: -1)
+        config: Optional dict to override behavioral thresholds. Available keys:
+                - min_fishing_speed (float): Min speed to classify as fishing, km/h (default: 0.5)
+                - max_fishing_speed (float): Max speed to classify as fishing, km/h (default: 8.0)
+                - min_transit_speed (float): Speed threshold for transit, km/h (default: 12.0)
+                - high_turn_threshold (float): Turning angle for fishing behavior, degrees (default: 45.0)
+                - low_straightness_threshold (float): Path straightness below = fishing (default: 0.4)
+                - high_sinuosity_threshold (float): Sinuosity above = fishing (default: 1.5)
+                - clustering_radius_km (float): Spatial clustering radius, km (default: 0.5)
+                - time_windows (list): Rolling window sizes in minutes (default: [10.0])
+                - spatial_window_km (float): Distance-based feature window, km (default: 1.0)
+                - min_state_duration (int): Min consecutive points for a state (default: 3)
+                - fishing_score_threshold (float): Score above = fishing, 0-1 (default: 0.5)
+                - weight_speed (float): Weight for speed indicator (default: 3.0)
+                - weight_turning (float): Weight for turning indicator (default: 2.0)
+                - weight_straightness (float): Weight for straightness indicator (default: 2.0)
+                - weight_sinuosity (float): Weight for sinuosity indicator (default: 1.5)
+                - weight_clustering (float): Weight for clustering indicator (default: 2.0)
+                - weight_speed_variability (float): Weight for speed variability (default: 1.5)
 
     Returns:
         DataFrame with original data plus:
         - is_fishing: Binary prediction (0 or 1)
         - fishing_score: Continuous fishing likelihood score (0-1)
+        - activity_type: Activity category (fishing, sailing, starting_trip, ending_trip)
+        - trip_phase: Trip phase (starting, in_progress, ending)
         - Additional feature columns (speed, acceleration, turning behavior, etc.)
 
     Example:
-        >>> # Basic usage
         >>> predictions = effort_predict_statistical(tracks)
-        >>>
-        >>> # With shore filtering (removes on-land/near-shore points)
         >>> predictions = effort_predict_statistical(tracks, apply_filter=True)
+        >>> predictions = effort_predict_statistical(
+        ...     tracks,
+        ...     config={'max_fishing_speed': 6.0, 'fishing_score_threshold': 0.6}
+        ... )
     """
     # Extract column mappings from colmap if provided
     if colmap:
@@ -158,6 +183,8 @@ def effort_predict_statistical(
         lat_col=lat_col,
         lon_col=lon_col,
         time_col=time_col,
+        use_parallel=use_parallel,
+        n_jobs=n_jobs,
     )
 
 
