@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fishing Effort Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-card: #1a2236;
+    --bg-hover: #243049;
+    --border: #2a3548;
+    --text-primary: #e8edf5;
+    --text-secondary: #8893a7;
+    --text-muted: #5b6580;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --green: #10b981;
+    --cyan: #06b6d4;
+    --sidebar-width: 280px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Layout */
+  .app { display:flex; height:100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-primary);
+  }
+
+  .sidebar-header h1 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sidebar-header h1 span { color: var(--accent); }
+
+  .sidebar-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Filter sections */
+  .filter-section { margin-bottom: 16px; }
+
+  .filter-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .filter-label .count {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    font-size: 9px;
+  }
+
+  /* Checkboxes */
+  .check-group { display: flex; flex-direction: column; gap: 3px; }
+
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+  }
+
+  .check-item:hover { background: var(--bg-hover); }
+
+  .check-item input[type="checkbox"] {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .check-item input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .check-item input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: -1px;
+    left: 1.5px;
+    font-size: 11px;
+    color: white;
+    font-weight: bold;
+  }
+
+  .check-item .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Metric selector */
+  .metric-select {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .metric-select:focus { outline: none; border-color: var(--accent); }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 20px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 14px;
+  }
+
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .upload-zone .icon { font-size: 28px; margin-bottom: 6px; }
+
+  .upload-zone p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .upload-zone .hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .file-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+
+  .file-tag {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-card);
+    border-radius: 5px;
+    font-size: 12px;
+  }
+
+  .file-tag .name { color: var(--cyan); font-weight: 500; }
+  .file-tag .info { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+
+  .file-tag .remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    transition: color 0.15s;
+  }
+
+  .file-tag .remove:hover { color: var(--red); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+  }
+
+  .stat-card {
+    text-align: center;
+    padding: 6px 2px;
+  }
+
+  .stat-card .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .stat-card .label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* Map area */
+  .map-container {
+    flex: 1;
+    position: relative;
+  }
+
+  #map { width: 100%; height: 100%; }
+
+  /* Map overlay badges */
+  .map-badge {
+    position: absolute;
+    z-index: 1000;
+    background: rgba(10,14,23,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    pointer-events: none;
+  }
+
+  .map-badge.zoom-badge { top: 12px; right: 12px; }
+  .map-badge.res-badge { top: 12px; right: 140px; color: var(--cyan); }
+
+  /* Offset zoom controls to avoid overlapping with map type selector */
+  .leaflet-top.leaflet-left .leaflet-control-zoom {
+    margin-top: 60px;
+  }
+
+  /* Legend */
+  .map-legend {
+    position: absolute;
+    bottom: 30px;
+    right: 12px;
+    z-index: 1000;
+    background: rgba(10,14,23,0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+
+  .legend-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .legend-bar {
+    width: 180px;
+    height: 10px;
+    border-radius: 3px;
+    margin-bottom: 4px;
+  }
+
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+  }
+
+  /* Tooltip */
+  .hex-tooltip {
+    background: rgba(10,14,23,0.95) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    color: var(--text-primary) !important;
+    font-size: 12px !important;
+    line-height: 1.6 !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+  }
+
+  .hex-tooltip .tt-metric {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--orange);
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .hex-tooltip .tt-label { color: var(--text-muted); font-size: 11px; }
+
+  /* Empty state */
+  .empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 800;
+    text-align: center;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+  .empty-state p { font-size: 14px; }
+
+  /* Separator */
+  .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 0;
+  }
+
+  /* Select all / none */
+  .toggle-all {
+    font-size: 10px;
+    color: var(--accent);
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .toggle-all:hover { text-decoration: underline; }
+
+  /* Month grid */
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+  }
+
+  .month-btn {
+    padding: 4px 2px;
+    font-size: 11px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+
+  .month-btn:hover { border-color: var(--accent); }
+
+  .month-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>🐟 <span>Fishing Effort</span> Dashboard</h1>
+    </div>
+
+    <div class="sidebar-scroll">
+      <!-- Upload -->
+      <div class="upload-zone" id="uploadZone">
+        <div class="icon">📁</div>
+        <p>Drop JSON files here</p>
+        <div class="hint">Export from hex_aggregation pipeline</div>
+        <input type="file" id="fileInput" multiple accept=".json" style="display:none">
+      </div>
+
+      <div class="file-list" id="fileList"></div>
+
+      <!-- Metric -->
+      <div class="filter-section">
+        <div class="filter-label">Color Metric</div>
+        <select class="metric-select" id="metricSelect">
+          <option value="fh">Fishing Hours</option>
+          <option value="nt">Trip Count</option>
+          <option value="nd">Active Days</option>
+          <option value="vd">Vessel-Days</option>
+          <option value="sp">Avg Speed (km/h)</option>
+        </select>
+      </div>
+
+      <div class="sep"></div>
+
+      <!-- Country -->
+      <div class="filter-section" id="countrySection" style="display:none">
+        <div class="filter-label">
+          Country / Region
+          <button class="toggle-all" onclick="toggleAll('country')">all</button>
+        </div>
+        <div class="check-group" id="countryFilters"></div>
+      </div>
+
+      <!-- Year -->
+      <div class="filter-section" id="yearSection" style="display:none">
+        <div class="filter-label">
+          Year
+          <button class="toggle-all" onclick="toggleAll('year')">all</button>
+        </div>
+        <div class="check-group" id="yearFilters"></div>
+      </div>
+
+      <!-- Season -->
+      <div class="filter-section" id="seasonSection" style="display:none">
+        <div class="filter-label">
+          Season
+          <button class="toggle-all" onclick="toggleAll('season')">all</button>
+        </div>
+        <div class="check-group" id="seasonFilters"></div>
+      </div>
+
+      <!-- Day/Night -->
+      <div class="filter-section" id="dnSection" style="display:none">
+        <div class="filter-label">
+          Day / Night
+          <button class="toggle-all" onclick="toggleAll('dn')">all</button>
+        </div>
+        <div class="check-group" id="dnFilters"></div>
+      </div>
+
+      <!-- Month -->
+      <div class="filter-section" id="monthSection" style="display:none">
+        <div class="filter-label">
+          Month
+          <button class="toggle-all" onclick="toggleAll('month')">all</button>
+        </div>
+        <div class="month-grid" id="monthFilters"></div>
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="value" id="statHexagons">—</div>
+        <div class="label">Hexagons</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="statHours">—</div>
+        <div class="label">Hours</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="statTrips">—</div>
+        <div class="label">Trips</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="statFiles">0</div>
+        <div class="label">Files</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div class="map-container">
+    <div id="map"></div>
+
+    <div class="map-badge zoom-badge">Zoom: <span id="zoomLevel">—</span></div>
+    <div class="map-badge res-badge">H3 Res: <span id="currentRes">—</span></div>
+
+    <div class="map-legend" id="mapLegend" style="display:none">
+      <div class="legend-title" id="legendTitle">Fishing Hours</div>
+      <div class="legend-bar" id="legendBar"></div>
+      <div class="legend-labels">
+        <span id="legendMin">0</span>
+        <span id="legendMax">100</span>
+      </div>
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <div class="icon">🌊</div>
+      <p>Upload dashboard JSON files to begin</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================================================================
+// STATE
+// ===================================================================
+const STATE = {
+  files: [],          // [{name, country, meta, boundaries, centers, data}]
+  filters: {
+    countries: new Set(),
+    years: new Set(),
+    seasons: new Set(),
+    dayNight: new Set(),
+    months: new Set(),
+  },
+  metric: 'fh',
+  currentRes: 7,
+};
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SEASON_COLORS = {
+  'NE_Monsoon': '#3b82f6',
+  'SE_Monsoon': '#10b981',
+  'Inter_Monsoon': '#f59e0b',
+};
+const COUNTRY_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
+  '#06b6d4','#ec4899','#84cc16','#f97316','#6366f1'
+];
+
+const METRIC_LABELS = {
+  fh: 'Fishing Hours',
+  nt: 'Trip Count',
+  nd: 'Active Days',
+  vd: 'Vessel-Days',
+  sp: 'Avg Speed (km/h)',
+};
+
+// Zoom → resolution thresholds
+const ZOOM_RES_MAP = [
+  { maxZoom: 10, res: 7 },
+  { maxZoom: 13, res: 8 },
+  { maxZoom: 99, res: 9 },
+];
+
+// Color scale (YlOrRd-like)
+const COLOR_STOPS = [
+  [255, 255, 178],
+  [254, 204, 92],
+  [253, 141, 60],
+  [240, 59, 32],
+  [189, 0, 38],
+];
+
+function interpolateColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const idx = t * (COLOR_STOPS.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.min(lo + 1, COLOR_STOPS.length - 1);
+  const f = idx - lo;
+  return [
+    Math.round(COLOR_STOPS[lo][0] + (COLOR_STOPS[hi][0] - COLOR_STOPS[lo][0]) * f),
+    Math.round(COLOR_STOPS[lo][1] + (COLOR_STOPS[hi][1] - COLOR_STOPS[lo][1]) * f),
+    Math.round(COLOR_STOPS[lo][2] + (COLOR_STOPS[hi][2] - COLOR_STOPS[lo][2]) * f),
+  ];
+}
+
+function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+
+// ===================================================================
+// MAP SETUP
+// ===================================================================
+const map = L.map('map', {
+  center: [-4.0, 39.7],
+  zoom: 8,
+  zoomControl: false,
+  preferCanvas: true,
+});
+
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+// Dark tiles (no token needed)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; CartoDB',
+  maxZoom: 19,
+}).addTo(map);
+
+let hexLayer = L.layerGroup().addTo(map);
+
+// Update zoom badge
+map.on('zoomend moveend', () => {
+  document.getElementById('zoomLevel').textContent = map.getZoom();
+  const newRes = getResForZoom(map.getZoom());
+  if (newRes !== STATE.currentRes) {
+    STATE.currentRes = newRes;
+    renderHexagons();
+  }
+  document.getElementById('currentRes').textContent = STATE.currentRes;
+});
+
+function getResForZoom(zoom) {
+  for (const entry of ZOOM_RES_MAP) {
+    if (zoom <= entry.maxZoom) return entry.res;
+  }
+  return 9;
+}
+
+// ===================================================================
+// FILE UPLOAD
+// ===================================================================
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  for (const file of files) {
+    if (!file.name.endsWith('.json')) continue;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        loadDataset(file.name, data);
+      } catch (err) {
+        alert(`Error parsing ${file.name}: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+  }
+}
+
+function loadDataset(filename, data) {
+  const country = data.meta?.country || filename.replace('.json','').replace('dashboard_','');
+
+  // Check if already loaded
+  if (STATE.files.find(f => f.country === country)) {
+    if (!confirm(`"${country}" is already loaded. Replace it?`)) return;
+    removeDataset(country);
+  }
+
+  STATE.files.push({
+    name: filename,
+    country: country,
+    meta: data.meta,
+    boundaries: data.boundaries,
+    centers: data.centers,
+    data: data.data,
+  });
+
+  // Auto-select this country in filters
+  STATE.filters.countries.add(country);
+
+  // Merge all available filter options
+  if (data.meta.years) data.meta.years.forEach(y => STATE.filters.years.add(y));
+  if (data.meta.months) data.meta.months.forEach(m => STATE.filters.months.add(m));
+  if (data.meta.seasons) data.meta.seasons.forEach(s => STATE.filters.seasons.add(s));
+  if (data.meta.day_night) data.meta.day_night.forEach(d => STATE.filters.dayNight.add(d));
+
+  rebuildFilters();
+  renderHexagons();
+  fitMapToData();
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('statFiles').textContent = STATE.files.length;
+}
+
+function removeDataset(country) {
+  STATE.files = STATE.files.filter(f => f.country !== country);
+  STATE.filters.countries.delete(country);
+  rebuildFilters();
+  renderHexagons();
+  document.getElementById('statFiles').textContent = STATE.files.length;
+  if (STATE.files.length === 0) {
+    document.getElementById('emptyState').style.display = '';
+  }
+}
+
+// ===================================================================
+// FILTER UI
+// ===================================================================
+function rebuildFilters() {
+  rebuildFileList();
+  rebuildCheckboxes('countrySection', 'countryFilters', 'country',
+    STATE.files.map(f => f.country), STATE.filters.countries, true);
+  rebuildCheckboxes('yearSection', 'yearFilters', 'year',
+    [...STATE.filters.years].sort(), STATE.filters.years);
+  rebuildCheckboxes('seasonSection', 'seasonFilters', 'season',
+    [...STATE.filters.seasons].sort(), STATE.filters.seasons);
+  rebuildCheckboxes('dnSection', 'dnFilters', 'dn',
+    [...STATE.filters.dayNight].sort(), STATE.filters.dayNight);
+  rebuildMonths();
+}
+
+function rebuildFileList() {
+  const container = document.getElementById('fileList');
+  container.innerHTML = '';
+  STATE.files.forEach((f, i) => {
+    const el = document.createElement('div');
+    el.className = 'file-tag';
+    const hours = f.meta.total_fishing_hours?.toFixed(1) || '?';
+    el.innerHTML = `
+      <span class="name">${f.country}</span>
+      <span class="info">${hours}h</span>
+      <button class="remove" onclick="removeDataset('${f.country}')">&times;</button>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function rebuildCheckboxes(sectionId, containerId, filterKey, values, activeSet, showDots) {
+  const section = document.getElementById(sectionId);
+  const container = document.getElementById(containerId);
+  if (!values.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  container.innerHTML = '';
+
+  values.forEach((val, i) => {
+    const label = document.createElement('label');
+    label.className = 'check-item';
+    const checked = activeSet.has(val) ? 'checked' : '';
+    const dot = showDots ? `<span class="dot" style="background:${COUNTRY_COLORS[i % COUNTRY_COLORS.length]}"></span>` : '';
+    label.innerHTML = `<input type="checkbox" ${checked} data-filter="${filterKey}" data-value="${val}"> ${dot} ${val}`;
+    label.querySelector('input').addEventListener('change', onFilterChange);
+    container.appendChild(label);
+  });
+}
+
+function rebuildMonths() {
+  const section = document.getElementById('monthSection');
+  const container = document.getElementById('monthFilters');
+  const months = [...STATE.filters.months].sort((a,b) => a-b);
+  if (!months.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  container.innerHTML = '';
+
+  for (let m = 1; m <= 12; m++) {
+    const btn = document.createElement('div');
+    btn.className = 'month-btn' + (STATE.filters.months.has(m) ? ' active' : '');
+    btn.textContent = MONTH_NAMES[m-1];
+    btn.dataset.month = m;
+    if (!months.includes(m)) {
+      btn.style.opacity = '0.3';
+      btn.style.pointerEvents = 'none';
+    }
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        STATE.filters.months.delete(m);
+      } else {
+        btn.classList.add('active');
+        STATE.filters.months.add(m);
+      }
+      renderHexagons();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function onFilterChange(e) {
+  const key = e.target.dataset.filter;
+  const val = e.target.dataset.value;
+  const filterMap = { country: 'countries', year: 'years', season: 'seasons', dn: 'dayNight' };
+  const setName = filterMap[key];
+  if (!setName) return;
+
+  // Parse numeric values
+  let parsedVal = val;
+  if (key === 'year') parsedVal = parseInt(val);
+
+  if (e.target.checked) {
+    STATE.filters[setName].add(parsedVal);
+  } else {
+    STATE.filters[setName].delete(parsedVal);
+  }
+  renderHexagons();
+}
+
+function toggleAll(filterKey) {
+  const filterMap = { country: 'countries', year: 'years', season: 'seasons', dn: 'dayNight', month: 'months' };
+  const setName = filterMap[filterKey];
+  const set = STATE.filters[setName];
+  const allChecked = document.querySelectorAll(`[data-filter="${filterKey}"]`);
+
+  if (filterKey === 'month') {
+    const allMonths = [...STATE.filters.months];
+    // If all active, deselect all; else select all
+    const btns = document.querySelectorAll('.month-btn');
+    const allActive = [...btns].filter(b => !b.style.pointerEvents).every(b => b.classList.contains('active'));
+    btns.forEach(b => {
+      if (b.style.pointerEvents === 'none') return;
+      const m = parseInt(b.dataset.month);
+      if (allActive) { b.classList.remove('active'); STATE.filters.months.delete(m); }
+      else { b.classList.add('active'); STATE.filters.months.add(m); }
+    });
+  } else {
+    const allAreChecked = [...allChecked].every(cb => cb.checked);
+    allChecked.forEach(cb => {
+      cb.checked = !allAreChecked;
+      let v = cb.dataset.value;
+      if (filterKey === 'year') v = parseInt(v);
+      if (!allAreChecked) set.add(v); else set.delete(v);
+    });
+  }
+  renderHexagons();
+}
+
+// Metric selector
+document.getElementById('metricSelect').addEventListener('change', (e) => {
+  STATE.metric = e.target.value;
+  renderHexagons();
+});
+
+// ===================================================================
+// DATA AGGREGATION
+// ===================================================================
+function getFilteredAggregation() {
+  const resKey = `res${STATE.currentRes}`;
+  const hexMap = {}; // hexId → aggregated metrics
+
+  for (const file of STATE.files) {
+    if (!STATE.filters.countries.has(file.country)) continue;
+
+    const records = file.data[resKey];
+    const boundaries = file.boundaries[resKey];
+    const centers = file.centers[resKey];
+
+    if (!records) continue;
+
+    for (const rec of records) {
+      // Apply filters
+      if (!STATE.filters.years.has(rec.y)) continue;
+      if (!STATE.filters.months.has(rec.m)) continue;
+      if (!STATE.filters.dayNight.has(rec.dn)) continue;
+      if (!STATE.filters.seasons.has(rec.s)) continue;
+
+      const hexId = rec.h;
+      if (!hexMap[hexId]) {
+        const center = centers[hexId];
+        hexMap[hexId] = {
+          boundary: boundaries[hexId],
+          lat: center ? center[0] : 0,
+          lon: center ? center[1] : 0,
+          fh: 0, nt: 0, nd: 0, vd: 0,
+          sp_sum: 0, sp_weight: 0,
+          country: file.country,
+        };
+      }
+
+      const h = hexMap[hexId];
+      h.fh += rec.fh || 0;
+      h.nt += rec.nt || 0;
+      h.nd += rec.nd || 0;
+      h.vd += rec.vd || 0;
+      if (rec.sp != null) {
+        h.sp_sum += (rec.sp * (rec.fh || 1));
+        h.sp_weight += (rec.fh || 1);
+      }
+    }
+  }
+
+  // Finalize speed average
+  for (const h of Object.values(hexMap)) {
+    h.sp = h.sp_weight > 0 ? (h.sp_sum / h.sp_weight) : null;
+    delete h.sp_sum;
+    delete h.sp_weight;
+  }
+
+  return hexMap;
+}
+
+// ===================================================================
+// RENDER HEXAGONS
+// ===================================================================
+let renderTimeout = null;
+
+function renderHexagons() {
+  if (renderTimeout) clearTimeout(renderTimeout);
+  renderTimeout = setTimeout(_renderHexagons, 50);
+}
+
+function _renderHexagons() {
+  hexLayer.clearLayers();
+
+  const hexMap = getFilteredAggregation();
+  const hexIds = Object.keys(hexMap);
+
+  if (hexIds.length === 0) {
+    updateStats(0, 0, 0);
+    document.getElementById('mapLegend').style.display = 'none';
+    document.getElementById('currentRes').textContent = STATE.currentRes;
+    return;
+  }
+
+  // Compute color scale range
+  const metric = STATE.metric;
+  let values = hexIds.map(id => hexMap[id][metric] || 0).filter(v => v > 0);
+
+  if (values.length === 0) {
+    updateStats(hexIds.length, 0, 0);
+    return;
+  }
+
+  // Use percentile for robust scaling (ignore extreme outliers)
+  values.sort((a, b) => a - b);
+  const vmin = 0;
+  const p95 = values[Math.floor(values.length * 0.95)] || values[values.length - 1];
+  const vmax = p95 || 1;
+
+  // Render each hexagon
+  for (const hexId of hexIds) {
+    const h = hexMap[hexId];
+    const val = h[metric] || 0;
+    if (val <= 0 && metric !== 'sp') continue;
+
+    const boundary = h.boundary;
+    if (!boundary) continue;
+
+    // Normalize & color
+    const t = Math.min(val / vmax, 1);
+    const color = rgbStr(interpolateColor(t));
+
+    const polygon = L.polygon(boundary, {
+      color: color,
+      weight: 0.8,
+      fillColor: color,
+      fillOpacity: 0.7,
+      opacity: 0.9,
+    });
+
+    // Tooltip
+    const metricLabel = METRIC_LABELS[metric] || metric;
+    const displayVal = metric === 'sp' ? val?.toFixed(1) : (val < 10 ? val.toFixed(2) : val.toFixed(1));
+    let tt = `<div class="hex-tooltip">`;
+    tt += `<div class="tt-metric">${displayVal}</div>`;
+    tt += `<div class="tt-label">${metricLabel}</div>`;
+    tt += `<hr style="border:none;border-top:1px solid #2a3548;margin:4px 0">`;
+    tt += `<div>🕐 ${h.fh.toFixed(1)} hrs &nbsp; 🚤 ${h.nt} trips</div>`;
+    tt += `<div>📅 ${h.nd} days &nbsp; 📊 ${h.vd} vessel-days</div>`;
+    if (h.sp != null) tt += `<div>⚡ ${h.sp.toFixed(1)} km/h avg</div>`;
+    tt += `<div style="color:#5b6580;margin-top:3px">📍 ${h.lat.toFixed(3)}, ${h.lon.toFixed(3)}</div>`;
+    tt += `</div>`;
+
+    polygon.bindTooltip(tt, { sticky: true, className: 'hex-tooltip-wrapper' });
+    polygon.addTo(hexLayer);
+  }
+
+  // Update legend
+  updateLegend(metric, vmin, vmax);
+
+  // Update stats
+  const totalHours = hexIds.reduce((s, id) => s + (hexMap[id].fh || 0), 0);
+  const totalTrips = hexIds.reduce((s, id) => s + (hexMap[id].nt || 0), 0);
+  updateStats(hexIds.length, totalHours, totalTrips);
+
+  document.getElementById('currentRes').textContent = STATE.currentRes;
+}
+
+function updateLegend(metric, vmin, vmax) {
+  const legend = document.getElementById('mapLegend');
+  legend.style.display = '';
+
+  document.getElementById('legendTitle').textContent = METRIC_LABELS[metric] || metric;
+  document.getElementById('legendMin').textContent = vmin.toFixed(1);
+  document.getElementById('legendMax').textContent = vmax < 10 ? vmax.toFixed(2) : vmax.toFixed(1);
+
+  // Gradient bar
+  const stops = COLOR_STOPS.map((c, i) => {
+    const pct = (i / (COLOR_STOPS.length - 1)) * 100;
+    return `rgb(${c[0]},${c[1]},${c[2]}) ${pct}%`;
+  }).join(', ');
+  document.getElementById('legendBar').style.background = `linear-gradient(to right, ${stops})`;
+}
+
+function updateStats(hexCount, totalHours, totalTrips) {
+  document.getElementById('statHexagons').textContent = hexCount.toLocaleString();
+  document.getElementById('statHours').textContent =
+    totalHours > 1000 ? (totalHours / 1000).toFixed(1) + 'k' : totalHours.toFixed(1);
+  document.getElementById('statTrips').textContent =
+    totalTrips > 1000 ? (totalTrips / 1000).toFixed(1) + 'k' : totalTrips.toLocaleString();
+}
+
+function fitMapToData() {
+  const allLats = [];
+  const allLons = [];
+
+  for (const file of STATE.files) {
+    const resKey = `res7`;
+    const centers = file.centers[resKey] || file.centers[Object.keys(file.centers)[0]];
+    if (!centers) continue;
+    for (const [lat, lon] of Object.values(centers)) {
+      allLats.push(lat);
+      allLons.push(lon);
+    }
+  }
+
+  if (allLats.length > 0) {
+    const bounds = [
+      [Math.min(...allLats) - 0.1, Math.min(...allLons) - 0.1],
+      [Math.max(...allLats) + 0.1, Math.max(...allLons) + 0.1],
+    ];
+    map.fitBounds(bounds);
+  }
+}
+
+// Init zoom display
+document.getElementById('zoomLevel').textContent = map.getZoom();
+STATE.currentRes = getResForZoom(map.getZoom());
+document.getElementById('currentRes').textContent = STATE.currentRes;
+</script>
+
+</body>
+</html>

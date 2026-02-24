@@ -24,7 +24,14 @@ examples/data/pds-trips
 examples/notebooks/effort prediction visuals
 examples/notebooks/fishing_effort_outputs
 examples/notebooks/gear_behavior_analysis
-data/coastline
+examples/notebooks/*.html
+examples/notebooks/*.png
+examples/data/*.csv
+examples/notebooks/dashboard_data-v0.1.zip
+examples/notebooks/hex_output
+examples/notebooks/hex_output_v2
+src/ssfaitk/models/CPUE/*
+src/ssfaitk/models/gear/*
 CLAUDE.md
 
 # R package build artifacts
