@@ -32,6 +32,8 @@ BugReports: https://github.com/WorldFishCenter/ssf-ai-toolkit/issues
 Config/reticulate:
   list(
     packages = list(
-      list(package = "ssfaitk", pip = TRUE)
+      list(package = "ssfaitk", pip = TRUE),
+      list(package = "geopandas", pip = TRUE, optional = TRUE),
+      list(package = "h3", pip = TRUE, optional = TRUE)
     )
   )
