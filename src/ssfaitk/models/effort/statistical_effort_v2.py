@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Optional, List
-
 import numpy as np
 import pandas as pd
 # Import shore filtering utilities (optional - only used if shore filtering enabled)
@@ -51,8 +51,8 @@ REPO_ROOT = THIS_FILE.parent.parent.parent.parent.parent
 COASTLINE_DIR = REPO_ROOT / 'data' / 'coastline'
 
 # Default shapefiles (as absolute paths)
-DEFAULT_COASTLINE_LINES = str(COASTLINE_DIR / 'coastline_lines_wio.shp')
-DEFAULT_COASTLINE_LAND = str(COASTLINE_DIR / 'coastline_land_wio.shp')
+DEFAULT_COASTLINE_LINES = str(COASTLINE_DIR / 'coastline_lines_wio.geojson')
+DEFAULT_COASTLINE_LAND = str(COASTLINE_DIR / 'coastline_land_wio.geojson')
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,14 @@ def compute_local_statistics(
     df = df.sort_values([trip_col, "timestamp"]).copy()
     df["timestamp"] = pd.to_datetime(df["timestamp"])
 
+    trip_count = 0
+    total_trips = df[trip_col].nunique()
+
     for trip_id, trip_data in df.groupby(trip_col):
+        trip_count += 1
+        if trip_count % 100 == 0:
+            logger.info(f"Computing local stats: processed {trip_count}/{total_trips} trips...")
+
         idx = trip_data.index
         
         # Set timestamp as index for time-based rolling
@@ -242,7 +249,15 @@ def compute_spatial_features(
     """
     df = df.sort_values([trip_col, "timestamp"]).copy()
 
+    trip_count = 0
+    total_trips = df[trip_col].nunique()
+    time_started = time.time()
     for trip_id, trip_data in df.groupby(trip_col):
+        trip_count += 1
+        if trip_count % 10 == 0:
+            logger.info(f"Computing spatial features: processed {trip_count}/{total_trips} trips... in {time.time()-time_started}")
+            time_started = time.time()
+
         idx = trip_data.index
         lats = trip_data["latitude"].values
         lons = trip_data["longitude"].values
@@ -758,8 +773,8 @@ class StatisticalEffortClassifier:
 
         if filter:
             self.config['enable_shore_filtering'] = True
-            self.config["shore_coastline_shapefile"] = DEFAULT_COASTLINE_LINES # '../../../data/coastline/coastline_lines_wio.shp'
-            self.config["shore_land_shapefile"] = DEFAULT_COASTLINE_LAND # '../../../data/coastline/coastline_land_wio.shp'
+            self.config["shore_coastline_shapefile"] = DEFAULT_COASTLINE_LINES  # '../../../data/coastline/coastline_lines_wio.shp'
+            self.config["shore_land_shapefile"] = DEFAULT_COASTLINE_LAND  # '../../../data/coastline/coastline_land_wio.shp'
             df = self._apply_shore_filtering(df)
 
         return df
