@@ -16,6 +16,7 @@ from .models.effort import EffortClassifier, StatisticalEffortClassifier
 from .models.gear import GearPredictor
 from .models.vessel import VesselTypePredictor
 from .utils.logger import get_logger
+from .utils.hexaGrid_pipeline import run_hex_aggregation
 
 logger = get_logger(__name__)
 
@@ -443,3 +444,71 @@ def vessel_fit(
         logger.info(f"Vessel model saved to {save_path}")
 
     return model
+
+
+# ============================================================================
+# Hexagonal Grid Aggregation
+# ============================================================================
+
+def hexagrid_aggregate(
+    df: pd.DataFrame,
+    resolutions: Optional[list] = None,
+    lat_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    time_col: Optional[str] = None,
+    trip_col: Optional[str] = None,
+    fishing_col: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    save_parquet: bool = True,
+    save_csv: bool = False,
+    min_hours: float = 0.1,
+    min_trips: int = 1,
+    min_days: int = 1,
+) -> dict:
+    """
+    Aggregate GPS fishing tracks into H3 hexagonal grid cells.
+
+    Computes time-weighted fishing effort metrics per hexagon across multiple
+    temporal dimensions (overall, year, season, month, day/night). Designed
+    for visualization and dashboard generation.
+
+    Args:
+        df: DataFrame with GPS fishing track data (with effort/fishing predictions)
+        resolutions: List of H3 resolutions to compute (default: [7, 8])
+        lat_col: Latitude column name (auto-detected if None)
+        lon_col: Longitude column name (auto-detected if None)
+        time_col: Timestamp column name (auto-detected if None)
+        trip_col: Trip ID column name (auto-detected if None)
+        fishing_col: Column with fishing classification 0/1 (auto-detected if None)
+        output_dir: Directory to save results. If None, results are only returned.
+        save_parquet: Save results as parquet files (default: True)
+        save_csv: Also save results as CSV files (default: False)
+        min_hours: Minimum fishing hours per hexagon to include (default: 0.1)
+        min_trips: Minimum number of trips per hexagon to include (default: 1)
+        min_days: Minimum number of days per hexagon to include (default: 1)
+
+    Returns:
+        Dictionary with aggregation results per resolution, keyed by resolution
+        (e.g., 'res7', 'res8'). Each value contains temporal breakdowns:
+        'overall', 'year', 'season', 'month', 'daynight'.
+
+    Example:
+        >>> # After running effort prediction
+        >>> predictions <- effort_predict_statistical(tracks)
+        >>> hex_results <- hexagrid_aggregate(predictions, resolutions = c(7L, 8L))
+    """
+    return run_hex_aggregation(
+        df=df,
+        lat_col=lat_col,
+        lon_col=lon_col,
+        time_col=time_col,
+        trip_col=trip_col,
+        fishing_col=fishing_col,
+        resolutions=resolutions,
+        min_hours=min_hours,
+        min_trips=min_trips,
+        min_days=min_days,
+        output_dir=output_dir,
+        save_parquet=save_parquet,
+        save_csv=save_csv,
+    )
