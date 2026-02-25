@@ -8,15 +8,14 @@ and return pandas DataFrames (automatically converted back to R data.frames).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
 from .models.effort import EffortClassifier, StatisticalEffortClassifier
 from .models.gear import GearPredictor
 from .models.vessel import VesselTypePredictor
-from .utils.logger import get_logger
 from .utils.hexaGrid_pipeline import run_hex_aggregation
+from .utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -27,9 +26,9 @@ logger = get_logger(__name__)
 
 def effort_predict(
     df: pd.DataFrame,
-    model_path: Optional[str] = None,
+    model_path: str | None = None,
     return_proba: bool = True,
-    colmap: Optional[dict] = None,
+    colmap: dict | None = None,
 ) -> pd.DataFrame:
     """
     Predict fishing effort on GPS tracks using a trained model.
@@ -103,14 +102,14 @@ def effort_predict(
 def effort_predict_statistical(
     df: pd.DataFrame,
     apply_filter: bool = False,
-    trip_col: Optional[str] = None,
-    lat_col: Optional[str] = None,
-    lon_col: Optional[str] = None,
-    time_col: Optional[str] = None,
-    colmap: Optional[dict] = None,
+    trip_col: str | None = None,
+    lat_col: str | None = None,
+    lon_col: str | None = None,
+    time_col: str | None = None,
+    colmap: dict | None = None,
     use_parallel: bool = True,
     n_jobs: int = -1,
-    config: Optional[dict] = None,
+    config: dict | None = None,
 ) -> pd.DataFrame:
     """
     Predict fishing effort using statistical (rule-based) classifier.
@@ -191,12 +190,12 @@ def effort_predict_statistical(
 def effort_fit(
     df: pd.DataFrame,
     label_col: str = "Activity",
-    save_path: Optional[str] = None,
-    trip_col: Optional[str] = None,
-    lat_col: Optional[str] = None,
-    lon_col: Optional[str] = None,
-    time_col: Optional[str] = None,
-    colmap: Optional[dict] = None,
+    save_path: str | None = None,
+    trip_col: str | None = None,
+    lat_col: str | None = None,
+    lon_col: str | None = None,
+    time_col: str | None = None,
+    colmap: dict | None = None,
 ) -> EffortClassifier:
     """
     Train a custom effort prediction model on labeled data.
@@ -251,7 +250,7 @@ def effort_fit(
 
 def gear_predict(
     df: pd.DataFrame,
-    model_path: Optional[str] = None,
+    model_path: str | None = None,
 ) -> pd.DataFrame:
     """
     Predict fishing gear type from trip-level features.
@@ -305,7 +304,7 @@ def gear_predict(
 def gear_fit(
     df: pd.DataFrame,
     label_col: str = "gear_label",
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> GearPredictor:
     """
     Train a custom gear prediction model on labeled trip data.
@@ -365,7 +364,7 @@ def gear_fit(
 
 def vessel_predict(
     df: pd.DataFrame,
-    model_path: Optional[str] = None,
+    model_path: str | None = None,
 ) -> pd.DataFrame:
     """
     Predict vessel type (motorized vs. non-motorized) from trip-level features.
@@ -419,7 +418,7 @@ def vessel_predict(
 def vessel_fit(
     df: pd.DataFrame,
     label_col: str = "vessel_type_label",
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> VesselTypePredictor:
     """
     Train a custom vessel type prediction model on labeled trip data.
@@ -479,13 +478,13 @@ def vessel_fit(
 
 def hexagrid_aggregate(
     df: pd.DataFrame,
-    resolutions: Optional[list] = None,
-    lat_col: Optional[str] = None,
-    lon_col: Optional[str] = None,
-    time_col: Optional[str] = None,
-    trip_col: Optional[str] = None,
-    fishing_col: Optional[str] = None,
-    output_dir: Optional[str] = None,
+    resolutions: list | None = None,
+    lat_col: str | None = None,
+    lon_col: str | None = None,
+    time_col: str | None = None,
+    trip_col: str | None = None,
+    fishing_col: str | None = None,
+    output_dir: str | None = None,
     save_parquet: bool = True,
     save_csv: bool = False,
     min_hours: float = 0.1,
