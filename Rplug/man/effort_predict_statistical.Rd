@@ -12,14 +12,19 @@ effort_predict_statistical(
   lon_col = NULL,
   time_col = NULL,
   colmap = NULL,
+  use_parallel = TRUE,
+  n_jobs = -1L,
   config = NULL
 )
 }
 \arguments{
-\item{df}{Data frame with GPS tracking data}
+\item{df}{Data frame with GPS tracking data. Must contain columns for
+latitude, longitude, and timestamp. A trip ID column is recommended
+but auto-detected if present.}
 
-\item{filter}{Logical; enable shore distance filtering to remove on-land and
-near-shore points. Requires coastline data. Default: \code{FALSE}}
+\item{filter}{Logical; remove points on land or within \verb{0.5 km} of the
+coastline before classification. Uses bundled WIO coastline. Requires
+\code{geopandas} (\code{reticulate::py_install("geopandas")}). Default: \code{FALSE}}
 
 \item{trip_col}{Column name for trip ID (auto-detected if \code{NULL})}
 
@@ -29,49 +34,87 @@ near-shore points. Requires coastline data. Default: \code{FALSE}}
 
 \item{time_col}{Column name for timestamp (auto-detected if \code{NULL})}
 
-\item{colmap}{Optional named list for column mapping (alternative to individual parameters)}
+\item{colmap}{Optional named list for column mapping (alternative to
+individual \verb{*_col} parameters). Valid keys: \code{trip_id}, \code{time}/\code{timestamp},
+\code{lat}/\code{latitude}, \code{lon}/\code{longitude}.
+Example: \code{list(trip_id = "VesselID", time = "GPS_Time", lat = "Lat", lon = "Lon")}}
 
-\item{config}{Optional named list with behavioral thresholds for classification.
-See Python documentation for available parameters.}
+\item{use_parallel}{Logical; enable parallel processing across trips
+(default: \code{TRUE}). Recommended for datasets with more than 10 trips.}
+
+\item{n_jobs}{Integer; number of parallel workers. \code{-1L} uses all available
+CPUs (default: \code{-1L}).}
+
+\item{config}{Optional named list to override behavioral classification
+thresholds. All values are optional — only specify what you want to change:
+\describe{
+\item{\code{min_fishing_speed}}{Min speed classified as fishing, km/h (default: \code{0.5})}
+\item{\code{max_fishing_speed}}{Max speed classified as fishing, km/h (default: \code{8.0})}
+\item{\code{min_transit_speed}}{Speed threshold for transit, km/h (default: \code{12.0})}
+\item{\code{high_turn_threshold}}{Turning angle indicating fishing, degrees (default: \code{45.0})}
+\item{\code{low_straightness_threshold}}{Path straightness below = fishing (default: \code{0.4})}
+\item{\code{high_sinuosity_threshold}}{Sinuosity above = fishing (default: \code{1.5})}
+\item{\code{clustering_radius_km}}{Spatial clustering radius, km (default: \code{0.5})}
+\item{\code{time_windows}}{Rolling window sizes in minutes, e.g. \code{list(5, 10, 30)} (default: \code{list(10.0)})}
+\item{\code{spatial_window_km}}{Distance-based feature window, km (default: \code{1.0})}
+\item{\code{min_state_duration}}{Min consecutive points for a state (default: \code{3L})}
+\item{\code{fishing_score_threshold}}{Score above this = fishing, range 0-1 (default: \code{0.5})}
+\item{\code{weight_speed}}{Scoring weight for speed indicator (default: \code{3.0})}
+\item{\code{weight_turning}}{Scoring weight for turning indicator (default: \code{2.0})}
+\item{\code{weight_straightness}}{Scoring weight for path straightness (default: \code{2.0})}
+\item{\code{weight_sinuosity}}{Scoring weight for sinuosity (default: \code{1.5})}
+\item{\code{weight_clustering}}{Scoring weight for spatial clustering (default: \code{2.0})}
+\item{\code{weight_speed_variability}}{Scoring weight for speed variability (default: \code{1.5})}
+}}
 }
 \value{
-Data frame with original data plus prediction columns:
-\itemize{
-\item \code{is_fishing}: Binary prediction (0 or 1)
-\item \code{fishing_score}: Continuous fishing likelihood score (0-1)
-\item Additional feature columns (speed, acceleration, turning behavior, etc.)
+Data frame with original columns plus:
+\describe{
+\item{\code{is_fishing}}{Binary prediction: 1 = fishing, 0 = not fishing}
+\item{\code{fishing_score}}{Continuous likelihood score (0-1)}
+\item{\code{activity_type}}{Category: \code{"fishing"}, \code{"sailing"}, \code{"starting_trip"}, \code{"ending_trip"}}
+\item{\code{trip_phase}}{Phase: \code{"starting"}, \code{"in_progress"}, \code{"ending"}}
+\item{Additional feature columns}{Speed, acceleration, turning behavior, sinuosity, etc.}
 }
 }
 \description{
-Predicts fishing effort using a rule-based classifier that doesn't require training.
-Analyzes movement patterns (speed, acceleration, turning behavior) to identify
-fishing activity. This is useful when no labeled training data is available.
+Predicts fishing effort using a high-performance rule-based classifier that
+requires no training data. Analyzes GPS movement patterns (speed, turning
+behavior, path sinuosity, spatial clustering) to identify fishing activity.
 
-Includes optional shore distance filtering to remove GPS points that are on land
-or too close to shore, which helps prevent false positives from coastal navigation.
+Uses parallel processing across trips by default for fast computation on
+large datasets. Includes optional shore filtering using bundled WIO coastline
+data to remove GPS points on land or too close to shore.
 }
 \examples{
 \dontrun{
-# Basic usage - no model required!
 tracks <- read.csv("gps_tracks.csv")
+
+# Basic usage - no model or training required
 predictions <- effort_predict_statistical(tracks)
 
-# With shore filtering (removes on-land/near-shore points)
+# With shore filtering
 predictions <- effort_predict_statistical(tracks, filter = TRUE)
 
-# View fishing activity summary
-table(predictions$is_fishing)
-
-# With custom column mapping
+# Custom column names
 predictions <- effort_predict_statistical(
   tracks,
-  filter = TRUE,
-  colmap = list(
-    trip_id = "VesselID",
-    time = "GPS_DateTime",
-    lat = "Lat",
-    lon = "Lon"
+  colmap = list(trip_id = "VesselID", time = "GPS_Time", lat = "Lat", lon = "Lon")
+)
+
+# Tune thresholds for a specific fishery (e.g. faster vessels)
+predictions <- effort_predict_statistical(
+  tracks,
+  config = list(
+    max_fishing_speed = 12.0,
+    fishing_score_threshold = 0.6
   )
 )
+
+# Disable parallelism (useful in constrained environments)
+predictions <- effort_predict_statistical(tracks, use_parallel = FALSE)
+
+# Use 4 CPU cores instead of all
+predictions <- effort_predict_statistical(tracks, n_jobs = 4L)
 }
 }

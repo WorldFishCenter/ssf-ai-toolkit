@@ -23,90 +23,119 @@ ssfaitk_available <- function() {
   })
 }
 
+#' Get ssfaitk package versions
+#'
+#' @description
+#' Returns the version of the R package and (if available) the Python package.
+#' Useful for debugging and for pinning versions in downstream workflows.
+#'
+#' @return Named character vector with `r` and `python` versions.
+#'   The `python` value is `NA` if the Python package is not installed.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' ssfaitk_version()
+#' #>        r   python
+#' #> "0.1.0" "0.1.0"
+#' }
+ssfaitk_version <- function() {
+  r_ver <- as.character(utils::packageVersion("ssfaitk"))
+
+  py_ver <- tryCatch({
+    pkg <- reticulate::import("importlib.metadata")
+    pkg$version("ssfaitk")
+  }, error = function(e) NA_character_)
+
+  versions <- c(r = r_ver, python = py_ver)
+  print(versions)
+  invisible(versions)
+}
+
 #' Install SSF AI Toolkit Python package
 #'
 #' @description
-#' Installs the `ssfaitk` Python package in the current Python environment.
-#' By default, installs the package in editable mode from the parent directory
-#' (assumes the R package is in `Rplug/` subdirectory). For remote installation,
-#' use `method = "pip"` with a GitHub URL or PyPI (when available).
+#' Installs the `ssfaitk` Python package from GitHub (default) or a local path.
 #'
-#' @param method Installation method: "auto" (default), "virtualenv", "conda", or "pip"
-#' @param conda Path to conda executable (for method = "conda")
-#' @param pip Logical; whether to use pip for installation (default: TRUE)
-#' @param pip_options Additional options to pass to pip
-#' @param python_version Python version to use (for new environments)
-#' @param package_url URL or path to install from. Default is `".."` (parent directory)
-#'   for local editable install. Use a GitHub URL for remote installation, e.g.,
-#'   "git+https://github.com/user/ssf-ai-toolkit.git"
+#' For production and CI use, always specify a `version` tag to pin the Python
+#' package to a known release. When developing locally, pass `local = TRUE` to
+#' install from the parent directory in editable mode.
+#'
+#' @param version Git tag or branch to install from GitHub (default: `"main"`).
+#'   Use a release tag to pin to a specific version, e.g. `"v0.2.0"`.
+#'   Ignored when `local = TRUE`.
+#' @param local Logical; install from local source tree in editable mode.
+#'   Assumes the R package lives inside the Python repo (e.g. `Rplug/`).
+#'   Default: `FALSE`.
+#' @param method Installation method: `"auto"` (default), `"virtualenv"`, `"conda"`
+#' @param pip_options Additional pip options (character vector), e.g.
+#'   `"--force-reinstall --no-cache-dir"` to force a clean re-install.
+#' @param python_version Python version to use when creating new environments
 #'
 #' @return Invisibly returns `TRUE` if installation succeeds
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # Install from local source (if in development)
+#' # Install latest from GitHub main branch
 #' install_ssfaitk()
 #'
-#' # Install from GitHub
-#' install_ssfaitk(
-#'   package_url = "git+https://github.com/user/ssf-ai-toolkit.git"
-#' )
+#' # Pin to a specific release (recommended for production / CI)
+#' install_ssfaitk(version = "v0.2.0")
 #'
-#' # Install with pip in a virtualenv
-#' install_ssfaitk(method = "virtualenv")
+#' # Force reinstall (useful when updating)
+#' install_ssfaitk(version = "v0.2.0", pip_options = "--force-reinstall --no-cache-dir")
+#'
+#' # Local development install (editable)
+#' install_ssfaitk(local = TRUE)
 #' }
-install_ssfaitk <- function(method = "auto",
-                            conda = "auto",
-                            pip = TRUE,
+install_ssfaitk <- function(version = "main",
+                            local = FALSE,
+                            method = "auto",
                             pip_options = NULL,
-                            python_version = NULL,
-                            package_url = "..") {
-  # Determine if we're doing a local editable install or remote install
-  if (package_url == "..") {
-    # Local editable install - find Python package root
+                            python_version = NULL) {
+  if (local) {
     python_pkg_path <- .find_python_package_root()
-
     if (is.null(python_pkg_path)) {
       stop(
         "Could not locate Python package root automatically.\n",
-        "Please specify the path explicitly:\n",
-        "  install_ssfaitk(package_url = '/absolute/path/to/ssf-ai-toolkit')\n",
+        "Specify the path directly via pip:\n",
+        "  reticulate::py_install('-e /absolute/path/to/ssf-ai-toolkit', pip = TRUE)\n",
         "Or install from GitHub:\n",
-        "  install_ssfaitk(package_url = 'git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git')",
+        "  install_ssfaitk()  # installs latest from main",
         call. = FALSE
       )
     }
-
     package_spec <- paste0("-e ", python_pkg_path)
-    message("Installing ssfaitk from local source in editable mode...")
-    message("Using path: ", python_pkg_path)
+    message("Installing ssfaitk from local source (editable): ", python_pkg_path)
   } else {
-    # Remote install or explicit path
-    package_spec <- package_url
-    message("Installing ssfaitk from: ", package_url)
+    package_spec <- paste0(
+      "git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git@", version
+    )
+    message("Installing ssfaitk ", version, " from GitHub...")
   }
 
-  # Install the package
   tryCatch({
     reticulate::py_install(
       packages = package_spec,
       method = method,
-      conda = conda,
-      pip = pip,
+      pip = TRUE,
       pip_options = pip_options,
       python_version = python_version
     )
-    message("\nSSF AI Toolkit installed successfully!")
-    message("Verify with: ssfaitk_available()")
+    # Invalidate cached module so next call picks up the new version
+    if (exists("ssfaitk_module", envir = .ssfaitk_env)) {
+      rm("ssfaitk_module", envir = .ssfaitk_env)
+    }
+    message("SSF AI Toolkit installed successfully. Verify with ssfaitk_available()")
     invisible(TRUE)
   }, error = function(e) {
     stop(
-      "Installation failed. Error: ", conditionMessage(e), "\n\n",
+      "Installation failed: ", conditionMessage(e), "\n\n",
       "Troubleshooting:\n",
-      "  1. Check Python is available: reticulate::py_config()\n",
-      "  2. Try manual installation: pip install -e /path/to/ssf-ai-toolkit\n",
-      "  3. For remote install: pip install git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git",
+      "  1. Check Python: reticulate::py_config()\n",
+      "  2. Set correct Python: Sys.setenv(RETICULATE_PYTHON = '/path/to/python')\n",
+      "  3. Force reinstall: install_ssfaitk(pip_options = '--force-reinstall --no-cache-dir')",
       call. = FALSE
     )
   })
@@ -163,6 +192,65 @@ install_ssfaitk <- function(method = "auto",
   has_src <- dir.exists(file.path(path, "src", "ssfaitk"))
 
   return(has_setup || has_src)
+}
+
+#' Configure Python environment for use with ssfaitk
+#'
+#' @description
+#' Points reticulate to a specific Python interpreter and optionally installs
+#' `ssfaitk`. Call this **once at the top of your script or workflow**, before
+#' any other `ssfaitk` function. This is especially important in GitHub Actions
+#' and other CI environments where multiple Python installations may exist.
+#'
+#' In GitHub Actions, set the `RETICULATE_PYTHON` environment variable (via the
+#' `env:` block or `Sys.setenv()`) to the Python interpreter where you installed
+#' ssfaitk, and this function will pick it up automatically.
+#'
+#' @param python Path to the Python interpreter to use. If `NULL` (default),
+#'   uses the `RETICULATE_PYTHON` environment variable. If neither is set,
+#'   reticulate uses its own discovery logic.
+#' @param install Logical; if `TRUE`, installs `ssfaitk` if not already present
+#'   (default: `FALSE`). Pass `version` to pin the release.
+#' @param version Version tag to install if `install = TRUE` (default: `"main"`).
+#'   Use a release tag, e.g. `"v0.2.0"`, to pin to a specific version.
+#'
+#' @return Invisibly returns the configured Python path
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # In a GitHub Actions R script — Python path set via RETICULATE_PYTHON env var:
+#' # (in workflow yaml)  env:
+#' #                       RETICULATE_PYTHON: /usr/bin/python3
+#' use_ssfaitk_python()
+#'
+#' # Point to a specific interpreter and auto-install if missing
+#' use_ssfaitk_python(python = "/usr/bin/python3", install = TRUE, version = "v0.2.0")
+#'
+#' # In a virtualenv workflow
+#' use_ssfaitk_python(python = "/path/to/venv/bin/python")
+#' }
+use_ssfaitk_python <- function(python = NULL, install = FALSE, version = "main") {
+  # Resolve python path: argument > env var > reticulate default
+  if (is.null(python)) {
+    python <- Sys.getenv("RETICULATE_PYTHON", unset = NA)
+    if (is.na(python) || nchar(python) == 0) python <- NULL
+  }
+
+  if (!is.null(python)) {
+    reticulate::use_python(python, required = TRUE)
+    message("Using Python: ", python)
+  } else {
+    message("No Python path specified; reticulate will auto-detect.")
+    message("Set RETICULATE_PYTHON or pass python = '/path/to/python' to avoid surprises.")
+  }
+
+  if (install && !ssfaitk_available()) {
+    message("ssfaitk not found — installing version '", version, "'...")
+    install_ssfaitk(version = version)
+  }
+
+  invisible(python)
 }
 
 #' Check Python environment configuration

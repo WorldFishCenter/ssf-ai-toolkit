@@ -5,49 +5,51 @@
 \title{Install SSF AI Toolkit Python package}
 \usage{
 install_ssfaitk(
+  version = "main",
+  local = FALSE,
   method = "auto",
-  conda = "auto",
-  pip = TRUE,
   pip_options = NULL,
-  python_version = NULL,
-  package_url = ".."
+  python_version = NULL
 )
 }
 \arguments{
-\item{method}{Installation method: "auto" (default), "virtualenv", "conda", or "pip"}
+\item{version}{Git tag or branch to install from GitHub (default: \code{"main"}).
+Use a release tag to pin to a specific version, e.g. \code{"v0.2.0"}.
+Ignored when \code{local = TRUE}.}
 
-\item{conda}{Path to conda executable (for method = "conda")}
+\item{local}{Logical; install from local source tree in editable mode.
+Assumes the R package lives inside the Python repo (e.g. \verb{Rplug/}).
+Default: \code{FALSE}.}
 
-\item{pip}{Logical; whether to use pip for installation (default: TRUE)}
+\item{method}{Installation method: \code{"auto"} (default), \code{"virtualenv"}, \code{"conda"}}
 
-\item{pip_options}{Additional options to pass to pip}
+\item{pip_options}{Additional pip options (character vector), e.g.
+\code{"--force-reinstall --no-cache-dir"} to force a clean re-install.}
 
-\item{python_version}{Python version to use (for new environments)}
-
-\item{package_url}{URL or path to install from. Default is \code{".."} (parent directory)
-for local editable install. Use a GitHub URL for remote installation, e.g.,
-"git+https://github.com/user/ssf-ai-toolkit.git"}
+\item{python_version}{Python version to use when creating new environments}
 }
 \value{
 Invisibly returns \code{TRUE} if installation succeeds
 }
 \description{
-Installs the \code{ssfaitk} Python package in the current Python environment.
-By default, installs the package in editable mode from the parent directory
-(assumes the R package is in \verb{Rplug/} subdirectory). For remote installation,
-use \code{method = "pip"} with a GitHub URL or PyPI (when available).
+Installs the \code{ssfaitk} Python package from GitHub (default) or a local path.
+
+For production and CI use, always specify a \code{version} tag to pin the Python
+package to a known release. When developing locally, pass \code{local = TRUE} to
+install from the parent directory in editable mode.
 }
 \examples{
 \dontrun{
-# Install from local source (if in development)
+# Install latest from GitHub main branch
 install_ssfaitk()
 
-# Install from GitHub
-install_ssfaitk(
-  package_url = "git+https://github.com/user/ssf-ai-toolkit.git"
-)
+# Pin to a specific release (recommended for production / CI)
+install_ssfaitk(version = "v0.2.0")
 
-# Install with pip in a virtualenv
-install_ssfaitk(method = "virtualenv")
+# Force reinstall (useful when updating)
+install_ssfaitk(version = "v0.2.0", pip_options = "--force-reinstall --no-cache-dir")
+
+# Local development install (editable)
+install_ssfaitk(local = TRUE)
 }
 }

@@ -22,25 +22,24 @@
 #' @keywords internal
 #' @noRd
 .get_ssfaitk <- function() {
-  # Check if module is already cached
+  # Return cached module if already loaded
   if (exists("ssfaitk_module", envir = .ssfaitk_env)) {
     return(get("ssfaitk_module", envir = .ssfaitk_env))
   }
 
-  # Try to import the module
-  tryCatch({
-    ssfaitk <- reticulate::import("ssfaitk", delay_load = TRUE)
-    # Cache the module
-    assign("ssfaitk_module", ssfaitk, envir = .ssfaitk_env)
-    return(ssfaitk)
-  }, error = function(e) {
+  # Check availability first so we can give a helpful error
+  if (!reticulate::py_module_available("ssfaitk")) {
     stop(
-      "Failed to load Python module 'ssfaitk'.\n\n",
-      "Please ensure:\n",
-      "  1. Python is available (check with reticulate::py_config())\n",
-      "  2. The ssfaitk package is installed (use install_ssfaitk())\n\n",
-      "Error message: ", conditionMessage(e),
+      "Python module 'ssfaitk' is not installed.\n\n",
+      "Install it with:\n",
+      "  install_ssfaitk()                          # latest from GitHub\n",
+      "  install_ssfaitk(version = 'v0.2.0')       # specific version\n\n",
+      "Or set RETICULATE_PYTHON to a Python where ssfaitk is already installed.",
       call. = FALSE
     )
-  })
+  }
+
+  ssfaitk <- reticulate::import("ssfaitk")
+  assign("ssfaitk_module", ssfaitk, envir = .ssfaitk_env)
+  ssfaitk
 }
