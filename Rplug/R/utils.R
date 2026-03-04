@@ -52,6 +52,48 @@ ssfaitk_version <- function() {
   invisible(versions)
 }
 
+#' Update both the R and Python ssfaitk packages to a specific version
+#'
+#' @description
+#' Convenience function that updates both the R package (via
+#' `remotes::install_github`) and the Python package (via pip) in one call.
+#' Use this in external projects to keep both components in sync.
+#'
+#' @param version Git tag or branch to install (default: `"main"`).
+#'   Use a release tag, e.g. `"v0.2.0"`, to pin to a specific version.
+#' @param force Logical; force reinstall even if already at this version
+#'   (default: `FALSE`).
+#'
+#' @return Invisibly returns `TRUE`
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Update to latest
+#' update_ssfaitk()
+#'
+#' # Pin to a specific release
+#' update_ssfaitk(version = "v0.2.0")
+#' }
+update_ssfaitk <- function(version = "main", force = FALSE) {
+  pip_opts <- if (force) "--force-reinstall --no-cache-dir" else NULL
+
+  message("--- Step 1/2: Updating R package ---")
+  remotes::install_github(
+    "WorldFishCenter/ssf-ai-toolkit",
+    subdir = "Rplug",
+    ref = version,
+    force = force,
+    quiet = FALSE
+  )
+
+  message("\n--- Step 2/2: Updating Python package ---")
+  install_ssfaitk(version = version, pip_options = pip_opts)
+
+  message("\nBoth packages updated. Restart your R session to use the new R package.")
+  invisible(TRUE)
+}
+
 #' Install SSF AI Toolkit Python package
 #'
 #' @description
