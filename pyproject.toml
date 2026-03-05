@@ -31,6 +31,14 @@ dependencies = [
   "numba>=0.57",
   "scipy>=1.10",
   "folium",
+  "matplotlib", 
+  "geopandas",
+  "shapely",
+  "google-cloud-storage",
+  "tqdm",
+  "h3",
+  "branca",
+  "plotly",
 ]
 
 [project.optional-dependencies]
