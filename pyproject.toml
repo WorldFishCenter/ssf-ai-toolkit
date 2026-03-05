@@ -30,6 +30,7 @@ dependencies = [
   "rich>=13.7",
   "numba>=0.57",
   "scipy>=1.10",
+  "folium",
 ]
 
 [project.optional-dependencies]
