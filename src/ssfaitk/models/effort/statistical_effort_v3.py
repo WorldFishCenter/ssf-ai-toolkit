@@ -60,14 +60,18 @@ except ImportError:
     SHORE_FILTER_AVAILABLE = False
     logging.warning("Shore filtering utilities not available - shore filtering will be disabled")
 
-# Get the absolute path to THIS file
-THIS_FILE = Path(__file__).resolve()
-REPO_ROOT = THIS_FILE.parent.parent.parent.parent.parent
-COASTLINE_DIR = REPO_ROOT / 'data' / 'coastline'
-
-# Default shapefiles (as absolute paths)
-DEFAULT_COASTLINE_LINES = str(COASTLINE_DIR / 'coastline_lines_wio.geojson')
-DEFAULT_COASTLINE_LAND = str(COASTLINE_DIR / 'coastline_land_wio.geojson')
+# Locate bundled coastline data using importlib.resources (works when pip-installed)
+try:
+    from importlib.resources import files
+    _data_pkg = files("ssfaitk.data.coastline")
+    DEFAULT_COASTLINE_LINES = str(_data_pkg.joinpath("coastline_lines_wio.geojson"))
+    DEFAULT_COASTLINE_LAND = str(_data_pkg.joinpath("coastline_land_wio.geojson"))
+except Exception:
+    # Fallback for development: walk up from source file
+    _THIS_FILE = Path(__file__).resolve()
+    _COASTLINE_DIR = _THIS_FILE.parent.parent.parent.parent.parent / "data" / "coastline"
+    DEFAULT_COASTLINE_LINES = str(_COASTLINE_DIR / "coastline_lines_wio.geojson")
+    DEFAULT_COASTLINE_LAND = str(_COASTLINE_DIR / "coastline_land_wio.geojson")
 
 logger = logging.getLogger(__name__)
 

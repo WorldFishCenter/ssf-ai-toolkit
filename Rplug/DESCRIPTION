@@ -1,0 +1,39 @@
+Package: ssfaitk
+Type: Package
+Title: Small-Scale Fisheries AI Toolkit
+Version: 0.1.0
+Authors@R: c(
+    person("SSF AI Toolkit Contributors", role = c("aut", "cre"),
+           email = "maintainer@example.com")
+    )
+Description: R interface to the SSF AI Toolkit Python library for analyzing
+    small-scale fisheries data. Provides machine learning models for fishing effort
+    classification, gear type prediction, and vessel type prediction from GPS tracking
+    data. Uses 'reticulate' to interface with the Python package.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.0.0)
+Imports:
+    reticulate (>= 1.35)
+Suggests:
+    testthat (>= 3.0.0),
+    waldo (>= 0.3.0),
+    knitr,
+    rmarkdown,
+    dplyr,
+    ggplot2
+VignetteBuilder: knitr
+URL: https://github.com/WorldFishCenter/ssf-ai-toolkit
+BugReports: https://github.com/WorldFishCenter/ssf-ai-toolkit/issues
+Config/reticulate:
+  list(
+    packages = list(
+      list(package = "ssfaitk", pip = TRUE),
+      list(package = "geopandas", pip = TRUE, optional = TRUE),
+      list(package = "h3", pip = TRUE, optional = TRUE)
+    )
+  )

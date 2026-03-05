@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 
-from ...utils.logging import get_logger
+from ...utils.logger import get_logger
 from ..base import BaseModel
 
 logger = get_logger(__name__)
