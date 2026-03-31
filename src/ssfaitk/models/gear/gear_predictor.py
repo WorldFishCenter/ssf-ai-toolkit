@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ...utils.logging import get_logger
+from ...utils.logger import get_logger
 from ..base import BaseModel
 
 logger = get_logger(__name__)
