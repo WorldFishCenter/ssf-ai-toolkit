@@ -32,4 +32,20 @@ examples/notebooks/hex_output
 examples/notebooks/hex_output_v2
 src/ssfaitk/models/CPUE/*
 src/ssfaitk/models/gear/*
+CLAUDE.md
 
+# R package build artifacts
+Rplug/.Rproj.user
+Rplug/*.Rproj
+Rplug/.Rhistory
+Rplug/.RData
+Rplug/.Ruserdata
+Rplug/check/
+Rplug/*.tar.gz
+Rplug/*.tgz
+Rplug/inst/doc/
+.github-depends.Rds
+.github-R-version
+
+# R model files
+*.joblib

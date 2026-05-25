@@ -28,6 +28,17 @@ dependencies = [
   "pydantic>=2",
   "joblib>=1.3",
   "rich>=13.7",
+  "numba>=0.57",
+  "scipy>=1.10",
+  "folium",
+  "matplotlib", 
+  "geopandas",
+  "shapely",
+  "google-cloud-storage",
+  "tqdm",
+  "h3",
+  "branca",
+  "plotly",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +54,12 @@ dev = [
 
 [project.scripts]
 ssfaitk = "ssfaitk.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ssfaitk = ["data/coastline/*.geojson"]
 
 [tool.black]
 line-length = 100

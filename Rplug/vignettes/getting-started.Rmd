@@ -1,0 +1,423 @@
+---
+title: "Getting Started with ssfaitk"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with ssfaitk}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE  # Set to TRUE when you have the package installed
+)
+```
+
+## Introduction
+
+The SSF AI Toolkit (`ssfaitk`) provides machine learning models for analyzing small-scale fisheries data. This vignette demonstrates the basic workflow for:
+
+1. Setting up the package
+2. Predicting fishing effort from GPS tracks
+3. Predicting gear types from trip summaries
+4. Predicting vessel types from trip summaries
+
+## Installation and Setup
+
+### Install the R Package
+
+```{r install}
+# Install from GitHub
+devtools::install_github("WorldFishCenter/ssf-ai-toolkit", subdir = "Rplug")
+```
+
+### Load the Package
+
+```{r load}
+library(ssfaitk)
+```
+
+### Install Python Dependencies
+
+The R package requires the Python `ssfaitk` package. Install it using:
+
+```{r install_python}
+# For local development (if you have the source code)
+install_ssfaitk()
+
+# For remote installation from GitHub
+install_ssfaitk(
+  package_url = "git+https://github.com/WorldFishCenter/ssf-ai-toolkit.git"
+)
+```
+
+### Verify Installation
+
+```{r verify}
+# Check if Python package is available
+ssfaitk_available()  # Should return TRUE
+
+# Display Python environment information
+check_python_env()
+```
+
+## Fishing Effort Classification
+
+Fishing effort classification identifies fishing vs. non-fishing activity from GPS tracking data.
+
+### Sample Data
+
+Let's create some sample GPS tracking data:
+
+```{r sample_tracks}
+# Create sample GPS tracks
+set.seed(123)
+n_points <- 100
+
+sample_tracks <- data.frame(
+  trip_id = rep(1:5, each = 20),
+  timestamp = seq(as.POSIXct("2024-01-01 06:00:00"),
+                  by = "5 min",
+                  length.out = n_points),
+  latitude = -6.0 + cumsum(rnorm(n_points, 0, 0.001)),
+  longitude = 39.0 + cumsum(rnorm(n_points, 0, 0.001))
+)
+
+head(sample_tracks)
+```
+
+### Option 1: Statistical Prediction (No Training Required)
+
+The statistical classifier uses behavioral rules and doesn't require a trained model:
+
+```{r statistical_effort}
+# Predict fishing effort using rule-based classifier
+predictions <- effort_predict_statistical(sample_tracks)
+
+# View predictions
+head(predictions[, c("trip_id", "is_fishing", "fishing_score", "activity_type")])
+
+# Summary
+table(predictions$is_fishing)
+table(predictions$activity_type)
+```
+
+The statistical classifier returns several useful columns:
+
+- `is_fishing`: Binary prediction (0 = non-fishing, 1 = fishing)
+- `fishing_score`: Continuous score (0-1)
+- `activity_type`: Classified activity (fishing, sailing, etc.)
+- `trip_phase`: Trip phase (starting, in_progress, ending)
+- Additional features (speed, acceleration, turning angles, etc.)
+
+### Option 2: Machine Learning Prediction (Requires Training)
+
+For ML-based prediction, you need to train a model first:
+
+```{r ml_effort}
+# Create labeled training data
+training_data <- sample_tracks
+training_data$Activity <- sample(
+  c("Fishing", "Searching", "Sailing", "Traveling"),
+  nrow(training_data),
+  replace = TRUE,
+  prob = c(0.3, 0.2, 0.3, 0.2)
+)
+
+# Train a model
+model <- effort_fit(
+  training_data,
+  label_col = "Activity",
+  save_path = "effort_model.joblib"
+)
+
+# Predict on new data
+new_tracks <- sample_tracks  # In practice, this would be unlabeled data
+predictions <- effort_predict(
+  new_tracks,
+  model_path = "effort_model.joblib"
+)
+
+# View predictions
+head(predictions[, c("trip_id", "effort_pred", "effort_prob")])
+```
+
+### Custom Column Names
+
+If your data uses different column names:
+
+```{r custom_columns}
+# Data with custom column names
+custom_tracks <- sample_tracks
+colnames(custom_tracks) <- c("VesselID", "GPS_Time", "Lat", "Lon")
+
+# Use colmap to specify column mapping
+predictions <- effort_predict_statistical(
+  custom_tracks,
+  colmap = list(
+    trip_id = "VesselID",
+    time = "GPS_Time",
+    lat = "Lat",
+    lon = "Lon"
+  )
+)
+```
+
+## Gear Type Prediction
+
+Gear prediction classifies the type of fishing gear used (e.g., gillnet, handline, longline).
+
+### Sample Trip-Level Data
+
+```{r sample_trips}
+# Create sample trip-level features
+sample_trips <- data.frame(
+  trip_id = 1:50,
+  duration_hours = runif(50, 2, 8),
+  distance_nm = runif(50, 5, 25),
+  mean_sog = runif(50, 1.5, 4.5)
+)
+
+head(sample_trips)
+```
+
+### Train a Gear Model
+
+```{r gear_training}
+# Add gear labels for training
+training_trips <- sample_trips
+training_trips$gear_label <- sample(
+  c("gillnet", "handline", "longline"),
+  nrow(training_trips),
+  replace = TRUE
+)
+
+# Train model
+gear_model <- gear_fit(
+  training_trips,
+  label_col = "gear_label",
+  save_path = "gear_model.joblib"
+)
+```
+
+### Predict Gear Types
+
+```{r gear_prediction}
+# Predict on new trips
+new_trips <- sample_trips
+predictions <- gear_predict(
+  new_trips,
+  model_path = "gear_model.joblib"
+)
+
+# View results
+table(predictions$gear_pred)
+head(predictions[, c("trip_id", "duration_hours", "gear_pred")])
+```
+
+## Vessel Type Prediction
+
+Vessel type prediction classifies vessels as motorized or non-motorized.
+
+### Train a Vessel Model
+
+```{r vessel_training}
+# Add vessel type labels
+training_trips$vessel_type_label <- sample(
+  c("motorized", "non-motorized"),
+  nrow(training_trips),
+  replace = TRUE,
+  prob = c(0.7, 0.3)
+)
+
+# Train model
+vessel_model <- vessel_fit(
+  training_trips,
+  label_col = "vessel_type_label",
+  save_path = "vessel_model.joblib"
+)
+```
+
+### Predict Vessel Types
+
+```{r vessel_prediction}
+# Predict on new trips
+predictions <- vessel_predict(
+  new_trips,
+  model_path = "vessel_model.joblib"
+)
+
+# View results
+table(predictions$vessel_type_pred)
+```
+
+## Data Requirements Summary
+
+### Effort Classification (GPS Tracks)
+
+**Required columns** (auto-detected):
+
+- Trip ID: `trip_id`, `Trip_ID`, `TRIP_ID`, `tripid`
+- Timestamp: `timestamp`, `time`, `ltime`, `datetime`
+- Latitude: `latitude`, `lat`, `LAT`, `y`
+- Longitude: `longitude`, `lon`, `LON`, `x`
+
+**Data level**: Point-by-point GPS coordinates
+
+### Gear & Vessel Prediction (Trip Features)
+
+**Required columns** (exact names):
+
+- `duration_hours`: Trip duration in hours
+- `distance_nm`: Total distance in nautical miles
+- `mean_sog`: Mean speed over ground
+
+**Data level**: One row per trip (aggregated from GPS points)
+
+## Working with Real Data
+
+### Loading Data
+
+```{r real_data}
+# Load GPS tracks from CSV
+tracks <- read.csv("path/to/your/gps_data.csv")
+
+# Load trip features
+trips <- read.csv("path/to/your/trip_features.csv")
+```
+
+### Data Preparation
+
+```{r data_prep}
+# Ensure timestamp is in proper format
+tracks$timestamp <- as.POSIXct(tracks$timestamp)
+
+# Check for required columns
+required_cols <- c("trip_id", "timestamp", "latitude", "longitude")
+stopifnot(all(required_cols %in% colnames(tracks)))
+
+# Check data quality
+summary(tracks)
+```
+
+### Handling Large Datasets
+
+For large datasets, consider processing in chunks:
+
+```{r chunking}
+# Process tracks in chunks
+chunk_size <- 50000
+n_chunks <- ceiling(nrow(large_tracks) / chunk_size)
+
+predictions_list <- list()
+
+for (i in 1:n_chunks) {
+  start_idx <- (i - 1) * chunk_size + 1
+  end_idx <- min(i * chunk_size, nrow(large_tracks))
+
+  chunk <- large_tracks[start_idx:end_idx, ]
+  predictions_list[[i]] <- effort_predict_statistical(chunk)
+
+  message("Processed chunk ", i, " of ", n_chunks)
+}
+
+# Combine results
+all_predictions <- do.call(rbind, predictions_list)
+```
+
+## Visualization
+
+### Fishing Activity Over Time
+
+```{r viz_time, eval=FALSE}
+library(ggplot2)
+library(dplyr)
+
+# Aggregate fishing activity by hour
+hourly_activity <- predictions %>%
+  mutate(hour = as.POSIXct(format(timestamp, "%Y-%m-%d %H:00:00"))) %>%
+  group_by(hour) %>%
+  summarize(
+    n_fishing = sum(is_fishing == 1),
+    n_total = n(),
+    pct_fishing = n_fishing / n_total * 100
+  )
+
+ggplot(hourly_activity, aes(x = hour, y = pct_fishing)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Fishing Activity Over Time",
+    x = "Time",
+    y = "% of Points Classified as Fishing"
+  ) +
+  theme_minimal()
+```
+
+### Gear Type Distribution
+
+```{r viz_gear, eval=FALSE}
+gear_summary <- predictions %>%
+  count(gear_pred) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+ggplot(gear_summary, aes(x = gear_pred, y = percentage, fill = gear_pred)) +
+  geom_col() +
+  labs(
+    title = "Distribution of Gear Types",
+    x = "Gear Type",
+    y = "Percentage of Trips"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Troubleshooting
+
+### Python Package Not Found
+
+```{r troubleshoot1}
+# Check if Python is configured
+library(reticulate)
+py_config()
+
+# Check if ssfaitk is available
+ssfaitk_available()
+
+# If not, install it
+install_ssfaitk()
+```
+
+### Column Name Issues
+
+```{r troubleshoot2}
+# Check your actual column names
+colnames(your_data)
+
+# Use colmap to map custom names
+predictions <- effort_predict(
+  your_data,
+  model_path = "model.joblib",
+  colmap = list(
+    trip_id = "your_trip_column_name",
+    time = "your_time_column_name",
+    lat = "your_latitude_column_name",
+    lon = "your_longitude_column_name"
+  )
+)
+```
+
+## Next Steps
+
+- **Effort Classification**: See `vignette("effort-classification")` for advanced techniques
+- **Gear Prediction**: See `vignette("gear-prediction")` for detailed workflow
+- **Vessel Prediction**: See `vignette("vessel-prediction")` for vessel classification
+- **Remote Deployment**: See `vignette("remote-deployment")` for using in GitHub Actions/Docker
+
+## Getting Help
+
+- **Function documentation**: Use `?function_name` (e.g., `?effort_predict`)
+- **GitHub Issues**: https://github.com/WorldFishCenter/ssf-ai-toolkit/issues
+- **Discussions**: https://github.com/WorldFishCenter/ssf-ai-toolkit/discussions

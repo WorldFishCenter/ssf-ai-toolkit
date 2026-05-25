@@ -13,7 +13,7 @@ from typing import Dict, List, Set, Optional
 from dataclasses import dataclass
 
 from ..utils.logger import get_logger
-# from ssfaitk.utils.logging import get_logger
+# from ssfaitk.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
