@@ -14,22 +14,12 @@ htmlcov/
 .pytest_cache/
 .ipynb_checkpoints/
 # data/
+data/*.parquet
+data/*.csv
 outputs/
 model_artifacts/
 auths/
-examples/data/pds-trips/zanzibar/other trips
-examples/notebooks/coastline_data
-examples/notebooks/test_outputs
-examples/data/pds-trips
-examples/notebooks/effort prediction visuals
-examples/notebooks/fishing_effort_outputs
-examples/notebooks/gear_behavior_analysis
-examples/notebooks/*.html
-examples/notebooks/*.png
-examples/data/*.csv
-examples/notebooks/dashboard_data-v0.1.zip
-examples/notebooks/hex_output
-examples/notebooks/hex_output_v2
+examples/
 src/ssfaitk/models/CPUE/*
 src/ssfaitk/models/gear/*
 
